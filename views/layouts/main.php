@@ -147,12 +147,12 @@ function isActiveLink(string $path, string $current): string {
 <script>
 // Show mobile toggle on small screens
 if (window.innerWidth <= 768) {
-  const t = document.getElementById('sidebar-toggle');
-  if (t) t.style.display = 'inline-flex';
+  const sidebarToggle = document.getElementById('sidebar-toggle');
+  if (sidebarToggle) sidebarToggle.style.display = 'inline-flex';
 }
 window.addEventListener('resize', () => {
-  const t = document.getElementById('sidebar-toggle');
-  if (t) t.style.display = window.innerWidth <= 768 ? 'inline-flex' : 'none';
+  const sidebarToggle = document.getElementById('sidebar-toggle');
+  if (sidebarToggle) sidebarToggle.style.display = window.innerWidth <= 768 ? 'inline-flex' : 'none';
 });
 </script>
 </body>

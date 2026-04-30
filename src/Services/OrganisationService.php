@@ -67,7 +67,7 @@ class OrganisationService
 
     private function generateSlug(string $name): string
     {
-        $slug = strtolower(trim(preg_replace('/[^A-Za-z0-9-]+/', '-', $name) ?? $name, '-'));
+        $slug = strtolower(trim(preg_replace('/[^A-Za-z0-9-]+/', '-', $name), '-'));
         $base = $slug;
         $i    = 1;
         while ($this->findBySlug($slug)) {

@@ -62,7 +62,7 @@ function initCopyButtons() {
           btn.style.color = '';
         }, 2000);
       }).catch(() => {
-        // Fallback for older browsers
+        // Fallback when clipboard API is unavailable (non-HTTPS, permission denied, or older browsers)
         const ta = document.createElement('textarea');
         ta.value = text;
         document.body.appendChild(ta);
