@@ -174,8 +174,12 @@ class CreditService
         $pdo->beginTransaction();
 
         try {
-            $account     = $this->getOrCreateAccount($reservation['organisation_id']);
-            $newReserved = max(0, (float) $account['reserved'] - (float) $reservation['reserved_credits']);
+            $account        = $this->getOrCreateAccount($reservation['organisation_id']);
+            $computed       = (float) $account['reserved'] - (float) $reservation['reserved_credits'];
+            if ($computed < 0) {
+                error_log("WARNING: reserved credits went negative for org {$reservation['organisation_id']} (computed: $computed). Clamping to 0.");
+            }
+            $newReserved = max(0, $computed);
 
             $this->db->update('credit_accounts', [
                 'reserved'   => $newReserved,

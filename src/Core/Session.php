@@ -15,7 +15,8 @@ class Session
         }
 
         ini_set('session.cookie_httponly', '1');
-        ini_set('session.cookie_secure', '1');
+        $isProduction = ($_ENV['APP_ENV'] ?? 'production') === 'production';
+        ini_set('session.cookie_secure', $isProduction ? '1' : '0');
         ini_set('session.use_strict_mode', '1');
         ini_set('session.cookie_samesite', 'Lax');
         session_name('gi_session');
