@@ -1,0 +1,73 @@
+<?php
+declare(strict_types=1);
+
+use GI\Core\Router;
+use GI\Controllers\HomeController;
+use GI\Controllers\AuthController;
+use GI\Controllers\DashboardController;
+use GI\Controllers\OrganisationController;
+use GI\Controllers\ProductController;
+use GI\Controllers\PlanController;
+use GI\Controllers\SubscriptionController;
+use GI\Controllers\CreditController;
+use GI\Controllers\ApiKeyController;
+use GI\Controllers\BillingController;
+use GI\Controllers\ApiController;
+
+/** @var Router $router */
+
+// Public routes
+$router->get('/', [HomeController::class, 'index']);
+
+// Auth routes
+$router->get('/auth/login', [AuthController::class, 'login']);
+$router->get('/auth/callback', [AuthController::class, 'callback']);
+$router->get('/auth/logout', [AuthController::class, 'logout']);
+$router->get('/auth/register', [AuthController::class, 'register']);
+$router->post('/auth/register', [AuthController::class, 'registerPost']);
+
+// Dashboard
+$router->get('/dashboard', [DashboardController::class, 'index']);
+
+// Organisation
+$router->get('/organisation', [OrganisationController::class, 'index']);
+$router->post('/organisation', [OrganisationController::class, 'update']);
+$router->get('/organisation/members', [OrganisationController::class, 'members']);
+
+// Products
+$router->get('/products', [ProductController::class, 'index']);
+
+// Plans
+$router->get('/plans', [PlanController::class, 'index']);
+
+// Subscriptions
+$router->get('/subscriptions', [SubscriptionController::class, 'index']);
+$router->post('/subscriptions/subscribe/{planId}', [SubscriptionController::class, 'subscribe']);
+$router->post('/subscriptions/cancel', [SubscriptionController::class, 'cancel']);
+
+// Credits
+$router->get('/credits', [CreditController::class, 'index']);
+$router->post('/credits/topup', [CreditController::class, 'topup']);
+$router->get('/credits/history', [CreditController::class, 'history']);
+
+// API Keys
+$router->get('/api-keys', [ApiKeyController::class, 'index']);
+$router->post('/api-keys/create', [ApiKeyController::class, 'create']);
+$router->post('/api-keys/revoke/{id}', [ApiKeyController::class, 'revoke']);
+
+// Billing
+$router->get('/billing', [BillingController::class, 'index']);
+$router->get('/billing/invoice/{id}', [BillingController::class, 'invoice']);
+
+// REST API v1
+$router->get('/api/v1/health', [ApiController::class, 'health']);
+$router->post('/api/v1/authorize', [ApiController::class, 'authorize']);
+$router->post('/api/v1/reserve', [ApiController::class, 'reserve']);
+$router->post('/api/v1/deduct', [ApiController::class, 'deduct']);
+$router->post('/api/v1/release', [ApiController::class, 'release']);
+$router->get('/api/v1/balance/{org_id}', [ApiController::class, 'balance']);
+$router->get('/api/v1/entitlement/{org_id}/{product_slug}', [ApiController::class, 'entitlement']);
+$router->post('/api/v1/apikeys/validate', [ApiController::class, 'validateApiKey']);
+$router->get('/api/v1/usage/{api_key}', [ApiController::class, 'usage']);
+$router->get('/api/v1/products', [ApiController::class, 'products']);
+$router->get('/api/v1/plans', [ApiController::class, 'plans']);
