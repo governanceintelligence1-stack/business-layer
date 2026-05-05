@@ -1,0 +1,21 @@
+{
+  "name": "governance-intelligence/business-layer",
+  "description": "Governance Intelligence Business Layer / Client Portal",
+  "type": "project",
+  "require": {
+    "php": ">=8.0",
+    "vlucas/phpdotenv": "^5.5",
+    "ramsey/uuid": "^4.7"
+  },
+  "require-dev": {
+    "phpunit/phpunit": "^10.0"
+  },
+  "autoload": {
+    "psr-4": {
+      "GI\\": "src/"
+    }
+  },
+  "scripts": {
+    "test": "phpunit"
+  }
+}
