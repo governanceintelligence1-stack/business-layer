@@ -28,6 +28,7 @@ class App
 
     private function loadRoutes(): void
     {
+        $router = $this->router;
         require BASE_PATH . '/src/routes.php';
     }
 

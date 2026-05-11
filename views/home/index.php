@@ -1,4 +1,4 @@
-<?php $pageTitle = 'Governance Intelligence Portal'; ?>
+<?php $pageTitle = 'GI Smartanalytics Portal'; ?>
 
 <!-- Hero -->
 <section class="hero">

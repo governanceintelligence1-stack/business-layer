@@ -1,0 +1,26 @@
+{
+  "name": "business-layer",
+  "version": "1.0.0",
+  "description": "The Business Layer is a PHP 8 application that sits between client-facing products and core platform services. It provides:",
+  "main": "index.js",
+  "scripts": {
+    "test": "echo \"Error: no test specified\" && exit 1"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/governanceintelligence1-stack/business-layer.git"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "type": "commonjs",
+  "bugs": {
+    "url": "https://github.com/governanceintelligence1-stack/business-layer/issues"
+  },
+  "homepage": "https://github.com/governanceintelligence1-stack/business-layer#readme",
+  "devDependencies": {
+    "autoprefixer": "^10.5.0",
+    "postcss": "^8.5.14",
+    "tailwindcss": "^4.2.4"
+  }
+}

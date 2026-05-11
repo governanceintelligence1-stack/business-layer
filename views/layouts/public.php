@@ -3,8 +3,8 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <meta name="description" content="Governance Intelligence Portal — Smart analytics and compliance solutions for modern organisations.">
-  <title><?= htmlspecialchars($pageTitle ?? 'Governance Intelligence Portal') ?></title>
+  <meta name="description" content="GI Smartanalytics Portal — Smart analytics and compliance solutions for modern organisations.">
+  <title><?= htmlspecialchars($pageTitle ?? 'GI Smartanalytics Portal') ?></title>
   <link rel="stylesheet" href="/assets/css/app.css">
   <link rel="icon" type="image/svg+xml" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>⚖</text></svg>">
 </head>
@@ -15,7 +15,7 @@
   <div class="public-nav-inner">
     <a href="/" class="nav-logo">
       <div class="nav-logo-icon">GI</div>
-      <span>Governance <span>Intelligence</span></span>
+      <span>GI <span>Smartanalytics</span></span>
     </a>
     <div class="nav-links">
       <a href="/auth/login" class="btn btn-ghost btn-sm">Log In</a>
@@ -49,13 +49,14 @@ if ($flashError || $flashSuccess): ?>
 <!-- Page Content -->
 <?= $content ?>
 
+<?php if (empty($hidePublicFooter)): ?>
 <!-- Footer -->
 <footer>
   <div class="footer-inner">
     <div class="footer-brand">
       <div class="nav-logo">
         <div class="nav-logo-icon">GI</div>
-        <span>Governance <span>Intelligence</span></span>
+        <span>GI <span>Smartanalytics</span></span>
       </div>
       <p class="mt-2">Enterprise-grade governance, compliance, and analytics intelligence platform for modern organisations.</p>
     </div>
@@ -83,7 +84,11 @@ if ($flashError || $flashSuccess): ?>
     <span>my.gismartanalytics.com</span>
   </div>
 </footer>
+<?php endif; ?>
 
 <script src="/assets/js/app.js"></script>
+<script>
+window.__GI_CONTEXT = window.__GI_CONTEXT || { user: null };
+</script>
 </body>
 </html>

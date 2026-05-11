@@ -11,15 +11,15 @@ class HomeController
 {
     public function index(): void
     {
-        $productService = new ProductService();
-        $planService    = new PlanService();
-
+        $products = [];
+        $plans    = [];
         try {
+            $productService = new ProductService();
+            $planService    = new PlanService();
             $products = $productService->getActive();
             $plans    = $planService->getActive();
         } catch (\Exception $e) {
-            $products = [];
-            $plans    = [];
+            // Database/driver may be unavailable in local UI-only setups.
         }
 
         View::render('home/index', ['products' => $products, 'plans' => $plans], 'public');

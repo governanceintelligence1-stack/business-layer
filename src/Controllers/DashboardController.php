@@ -9,6 +9,7 @@ use GI\Core\View;
 use GI\Services\CreditService;
 use GI\Services\SubscriptionService;
 use GI\Services\ApiKeyService;
+use GI\Services\PlanService;
 
 class DashboardController
 {
@@ -18,23 +19,27 @@ class DashboardController
         $user  = Session::get('user');
         $orgId = $user['organisation_id'] ?? '';
 
-        $creditService       = new CreditService();
-        $subscriptionService = new SubscriptionService();
-        $apiKeyService       = new ApiKeyService();
-
         $creditBalance = 0.0;
         $activePlan    = null;
         $apiKeys       = [];
         $transactions  = [];
+        $products      = [];
 
         if (!empty($orgId)) {
             try {
+                $creditService       = new CreditService();
+                $subscriptionService = new SubscriptionService();
+                $apiKeyService       = new ApiKeyService();
+                $planService         = new PlanService();
                 $creditBalance = $creditService->getBalance($orgId);
                 $activePlan    = $subscriptionService->getCurrentPlan($orgId);
                 $apiKeys       = $apiKeyService->getForOrganisation($orgId);
                 $transactions  = $creditService->getTransactionHistory($orgId, 10);
+                if ($activePlan && !empty($activePlan['plan_id'])) {
+                    $products = $planService->getPlanProducts((string) $activePlan['plan_id']);
+                }
             } catch (\Exception $e) {
-                // Database may not be set up yet
+                // Database/driver may be unavailable in local UI-only setups.
             }
         }
 
@@ -44,6 +49,7 @@ class DashboardController
             'activePlan'    => $activePlan,
             'apiKeyCount'   => count($apiKeys),
             'transactions'  => $transactions,
+            'products'      => $products,
         ]);
     }
 }

@@ -1,10 +1,12 @@
 // Governance Intelligence Portal — app.js
 
 document.addEventListener('DOMContentLoaded', () => {
+  initSystemTelemetry();
   initConfirmations();
   initFlashDismiss();
   initCopyButtons();
   initMobileSidebar();
+  initSidebarSubmenus();
   initTabs();
   initModals();
 });
@@ -97,6 +99,19 @@ function initMobileSidebar() {
   }
 }
 
+// ── Sidebar submenus ───────────────────────────────────────────────────────────
+function initSidebarSubmenus() {
+  document.querySelectorAll('[data-sidebar-group]').forEach(group => {
+    const toggle = group.querySelector('[data-sidebar-toggle]');
+    if (!toggle) return;
+
+    toggle.addEventListener('click', () => {
+      const isOpen = group.classList.toggle('open');
+      toggle.setAttribute('aria-expanded', isOpen ? 'true' : 'false');
+    });
+  });
+}
+
 // ── Tab switching ─────────────────────────────────────────────────────────────
 function initTabs() {
   document.querySelectorAll('.tab-btn').forEach(btn => {
@@ -143,3 +158,120 @@ function initModals() {
 // ── Format numbers ────────────────────────────────────────────────────────────
 window.formatCredits = (n) =>
   parseFloat(n).toLocaleString('en-ZA', { minimumFractionDigits: 0, maximumFractionDigits: 2 });
+
+// ── System telemetry / localStorage logger ───────────────────────────────────
+function initSystemTelemetry() {
+  const storageKey = 'gi_system_event_log';
+  const maxEntries = 1000;
+  const context = window.__GI_CONTEXT || {};
+
+  function readLogs() {
+    try {
+      return JSON.parse(localStorage.getItem(storageKey) || '[]');
+    } catch {
+      return [];
+    }
+  }
+
+  function writeLogs(logs) {
+    localStorage.setItem(storageKey, JSON.stringify(logs.slice(-maxEntries)));
+  }
+
+  function sanitizeFormData(form) {
+    const data = {};
+    if (!form) return data;
+    const fd = new FormData(form);
+    fd.forEach((value, key) => {
+      const k = String(key).toLowerCase();
+      const isSensitive = k.includes('password') || k.includes('cvc') || k.includes('cvv') || k.includes('card_number') || k.includes('token');
+      data[key] = isSensitive ? '[REDACTED]' : String(value);
+    });
+    return data;
+  }
+
+  function logEvent(type, payload = {}) {
+    const event = {
+      id: Math.random().toString(36).slice(2, 12),
+      at: new Date().toISOString(),
+      type,
+      route: window.location.pathname,
+      user: context.user || null,
+      payload
+    };
+
+    const logs = readLogs();
+    logs.push(event);
+    writeLogs(logs);
+    console.log('[GI-LOG]', event);
+  }
+
+  window.GI_LOG = logEvent;
+  window.GI_LOGS = {
+    dump: () => readLogs(),
+    clear: () => localStorage.removeItem(storageKey)
+  };
+
+  logEvent('app_boot', {
+    title: document.title,
+    href: window.location.href,
+    userAgent: navigator.userAgent
+  });
+
+  // Basic route/page view log
+  logEvent('page_view', {
+    referrer: document.referrer || null
+  });
+
+  // Click logging for important UI actions
+  document.addEventListener('click', (e) => {
+    const el = e.target.closest('a, button, [data-modal-open], [data-modal-close], [data-copy], [data-confirm]');
+    if (!el) return;
+    logEvent('click', {
+      tag: el.tagName,
+      id: el.id || null,
+      text: (el.textContent || '').trim().slice(0, 120),
+      href: el.getAttribute('href') || null,
+      classes: el.className || null
+    });
+  });
+
+  // Form submissions and field payload snapshot
+  document.addEventListener('submit', (e) => {
+    const form = e.target;
+    if (!(form instanceof HTMLFormElement)) return;
+    logEvent('form_submit', {
+      action: form.getAttribute('action') || window.location.pathname,
+      method: (form.getAttribute('method') || 'GET').toUpperCase(),
+      fields: sanitizeFormData(form)
+    });
+  });
+
+  // Search input changes (for updates page and others)
+  document.addEventListener('input', (e) => {
+    const target = e.target;
+    if (!(target instanceof HTMLInputElement)) return;
+    if (target.type === 'search' || /search/i.test(target.id) || /search/i.test(target.name)) {
+      logEvent('search_input', {
+        id: target.id || null,
+        name: target.name || null,
+        value: target.value
+      });
+    }
+  });
+
+  // Client errors
+  window.addEventListener('error', (e) => {
+    logEvent('js_error', {
+      message: e.message,
+      source: e.filename,
+      line: e.lineno,
+      column: e.colno
+    });
+  });
+
+  window.addEventListener('unhandledrejection', (e) => {
+    logEvent('promise_rejection', {
+      reason: String(e.reason || 'unknown')
+    });
+  });
+}

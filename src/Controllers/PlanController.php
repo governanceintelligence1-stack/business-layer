@@ -15,19 +15,19 @@ class PlanController
         Middleware::auth();
         $user = Session::get('user');
 
-        $planService = new PlanService();
-        $plans       = [];
+        $plans = [];
 
         try {
-            $plans = $planService->getActive();
+            $planService = new PlanService();
+            $plans       = $planService->getActive();
             foreach ($plans as &$plan) {
                 $plan['products'] = $planService->getPlanProducts($plan['id']);
-                $plan['features'] = is_string($plan['features'])
+                $plan['features'] = is_string($plan['features'] ?? '')
                     ? json_decode($plan['features'], true)
                     : ($plan['features'] ?? []);
             }
         } catch (\Exception $e) {
-            // Database may not be set up yet
+            // Database may not be set up yet, continue with empty plans
         }
 
         View::render('plans/index', ['user' => $user, 'plans' => $plans]);

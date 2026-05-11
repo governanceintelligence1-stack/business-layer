@@ -1,0 +1,15 @@
+{
+    "provider_ref": "PF-20260511103231-A8C42017",
+    "status": "pending",
+    "provider": "payfast",
+    "organisation_id": "00000000-0000-0000-0000-000000000001",
+    "user_id": "dev-user",
+    "plan_id": "",
+    "requested_plan_id": "mock-pro",
+    "plan_name": "Business Pro",
+    "billing_cycle": "monthly",
+    "amount": "1250.00",
+    "currency": "ZAR",
+    "updated_at": "2026-05-11T10:32:31+02:00",
+    "created_at": "2026-05-11T10:32:31+02:00"
+}

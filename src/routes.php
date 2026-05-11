@@ -13,6 +13,7 @@ use GI\Controllers\CreditController;
 use GI\Controllers\ApiKeyController;
 use GI\Controllers\BillingController;
 use GI\Controllers\ApiController;
+use GI\Controllers\UpdatesController;
 
 /** @var Router $router */
 
@@ -28,6 +29,7 @@ $router->post('/auth/register', [AuthController::class, 'registerPost']);
 
 // Dashboard
 $router->get('/dashboard', [DashboardController::class, 'index']);
+$router->get('/updates', [UpdatesController::class, 'index']);
 
 // Organisation
 $router->get('/organisation', [OrganisationController::class, 'index']);
@@ -36,14 +38,24 @@ $router->get('/organisation/members', [OrganisationController::class, 'members']
 
 // Products
 $router->get('/products', [ProductController::class, 'index']);
+$router->get('/products/upload-forensic-image', [ProductController::class, 'uploadForensicImage']);
+$router->get('/products/ocr', [ProductController::class, 'ocr']);
+$router->get('/products/transcription', [ProductController::class, 'transcription']);
+$router->get('/products/bank-statements', [ProductController::class, 'bankStatements']);
+$router->get('/products/file-comparison', [ProductController::class, 'fileComparison']);
 
 // Plans
 $router->get('/plans', [PlanController::class, 'index']);
 
-// Subscriptions
+// Subscriptions & Checkout
 $router->get('/subscriptions', [SubscriptionController::class, 'index']);
 $router->post('/subscriptions/subscribe/{planId}', [SubscriptionController::class, 'subscribe']);
 $router->post('/subscriptions/cancel', [SubscriptionController::class, 'cancel']);
+$router->get('/checkout', [\GI\Controllers\CheckoutController::class, 'index']);
+$router->post('/checkout/pay', [\GI\Controllers\CheckoutController::class, 'pay']);
+$router->get('/checkout/return', [\GI\Controllers\CheckoutController::class, 'return']);
+$router->get('/checkout/cancel', [\GI\Controllers\CheckoutController::class, 'cancel']);
+$router->post('/checkout/notify', [\GI\Controllers\CheckoutController::class, 'notify']);
 
 // Credits
 $router->get('/credits', [CreditController::class, 'index']);
