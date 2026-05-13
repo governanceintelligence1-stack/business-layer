@@ -11,6 +11,7 @@ use GI\Services\BillingService;
 use GI\Services\PayFastService;
 use GI\Services\PlanService;
 use GI\Services\PaymentTransactionService;
+use GI\Services\PaymentMethodService;
 use GI\Services\SubscriptionService;
 use GI\Services\CreditService;
 
@@ -166,6 +167,84 @@ class CheckoutController
         return '';
     }
 
+    private function detectCardBrand(string $digits): string
+    {
+        if (preg_match('/^4\d+$/', $digits)) {
+            return 'Visa';
+        }
+        if (preg_match('/^(5[1-5]\d+|2(2[2-9]|[3-7]\d)\d+)$/', $digits)) {
+            return 'Mastercard';
+        }
+        if (preg_match('/^3[47]\d+$/', $digits)) {
+            return 'American Express';
+        }
+        if (preg_match('/^6(?:011|5\d{2})\d+$/', $digits)) {
+            return 'Discover';
+        }
+        return 'Card';
+    }
+
+    private function resolveSelectedPaymentMethodId(array $user, string $orgId): ?string
+    {
+        $choice = trim((string)($_POST['payment_method_choice'] ?? ''));
+        if ($choice === '' || $choice === 'new') {
+            return null;
+        }
+
+        try {
+            $pmService = new PaymentMethodService();
+            $method = $pmService->findById($choice, $orgId);
+            if ($method && !empty($method['id'])) {
+                return (string)$method['id'];
+            }
+        } catch (\Throwable $e) {
+            // Ignore and continue with null.
+        }
+
+        return null;
+    }
+
+    private function maybeSaveCardFromCheckout(array $user, string $orgId): ?string
+    {
+        $choice = trim((string)($_POST['payment_method_choice'] ?? ''));
+        $shouldSave = isset($_POST['save_card']) && (string)$_POST['save_card'] === '1';
+        if ($choice !== 'new' || !$shouldSave) {
+            return null;
+        }
+
+        $cardholderName = trim((string)($_POST['cardholder_name'] ?? ''));
+        $cardNumberRaw = (string)($_POST['card_number'] ?? '');
+        $expiryMonthRaw = trim((string)($_POST['expiry_month'] ?? ''));
+        $expiryYearRaw = trim((string)($_POST['expiry_year'] ?? ''));
+        $digits = preg_replace('/\D+/', '', $cardNumberRaw) ?? '';
+        if ($cardholderName === '' || strlen($digits) < 12 || strlen($digits) > 19) {
+            return null;
+        }
+
+        $monthInt = (int)$expiryMonthRaw;
+        $yearInt = (int)$expiryYearRaw;
+        $currentYear = (int)date('Y');
+        if ($monthInt < 1 || $monthInt > 12 || $yearInt < $currentYear || $yearInt > ($currentYear + 25)) {
+            return null;
+        }
+
+        try {
+            $pmService = new PaymentMethodService();
+            return $pmService->saveCard(
+                $orgId,
+                (string)($user['id'] ?? ''),
+                $this->detectCardBrand($digits),
+                substr($digits, -4),
+                str_pad((string)$monthInt, 2, '0', STR_PAD_LEFT),
+                (string)$yearInt,
+                $cardholderName,
+                false
+            );
+        } catch (\Throwable $e) {
+            return null;
+        }
+    }
+
     private function resolveCheckoutPlan(string $planId): array
     {
         try {
@@ -216,9 +295,19 @@ class CheckoutController
             ];
         }
 
+        $paymentMethods = [];
+        if (!empty($orgId)) {
+            try {
+                $paymentMethods = (new PaymentMethodService())->getForOrganisation((string)$orgId);
+            } catch (\Exception $e) {
+                $paymentMethods = [];
+            }
+        }
+
         View::render('checkout/index', [
             'user' => $user,
             'plan' => $plan,
+            'paymentMethods' => $paymentMethods,
         ]);
     }
 
@@ -234,6 +323,8 @@ class CheckoutController
 
         $billingCycle = $_POST['billing_cycle'] ?? 'monthly';
         $planName = $_POST['plan_name'] ?? 'plan';
+        $paymentMethodId = $this->resolveSelectedPaymentMethodId($user ?? [], $orgId)
+            ?? $this->maybeSaveCardFromCheckout($user ?? [], $orgId);
 
         if (empty($planId)) {
             error_log("[{$dbgId}] stop: missing plan_id");
@@ -267,7 +358,7 @@ class CheckoutController
                 $orgId,
                 (string)($user['id'] ?? ''),
                 $persistedPlanId,
-                null,
+                $paymentMethodId,
                 $providerRef,
                 $amount,
                 [
@@ -275,6 +366,7 @@ class CheckoutController
                     'plan_name' => $planName,
                     'requested_plan_id' => $planId,
                     'is_mock_plan' => !empty($plan['_is_mock']),
+                    'payment_method_id' => $paymentMethodId,
                 ]
             );
         } catch (\Exception $e) {
@@ -358,7 +450,7 @@ class CheckoutController
 
             if ($tx !== []) {
                 $status = (string)($tx['status'] ?? 'pending');
-                if (in_array($status, ['paid', 'complete'], true)) {
+                if (in_array($status, ['successful', 'paid', 'complete'], true)) {
                     $message = 'Your payment is marked successful.';
                 } elseif (in_array($status, ['failed', 'cancelled'], true)) {
                     $message = 'Payment is not successful. You can retry from plans.';
@@ -408,6 +500,20 @@ class CheckoutController
     {
         $payload = $_POST ?: [];
         $this->appendNotifyLog($payload);
+
+        $skipSignature = filter_var(
+            getenv('PAYFAST_NOTIFY_SKIP_SIGNATURE') !== false
+                ? getenv('PAYFAST_NOTIFY_SKIP_SIGNATURE')
+                : ($_ENV['PAYFAST_NOTIFY_SKIP_SIGNATURE'] ?? ''),
+            FILTER_VALIDATE_BOOLEAN
+        );
+        $payfast = new PayFastService();
+        if (!$skipSignature && !$payfast->isValidSignature($payload)) {
+            http_response_code(400);
+            echo 'Invalid signature';
+            return;
+        }
+
         $providerRef = trim((string)($payload['m_payment_id'] ?? ''));
         $paymentStatus = strtolower((string)($payload['payment_status'] ?? ''));
         if ($providerRef !== '') {
@@ -415,61 +521,100 @@ class CheckoutController
             $this->updateJsonPaymentStatus($providerRef, $status, $payload);
         }
 
+        if ($providerRef === '') {
+            http_response_code(200);
+            echo 'OK';
+            return;
+        }
+
+        if (!in_array($paymentStatus, ['complete', 'completed'], true)) {
+            http_response_code(200);
+            echo 'OK';
+            return;
+        }
+
+        $txService = new PaymentTransactionService();
+        $tx = $txService->findByProviderRef($providerRef);
+        if (!$tx || empty($tx['id'])) {
+            http_response_code(200);
+            echo 'OK';
+            return;
+        }
+
+        if (($tx['status'] ?? '') === 'successful') {
+            http_response_code(200);
+            echo 'OK';
+            return;
+        }
+
+        try {
+            $invoiceId = $this->activateFromPayment($tx);
+            if ($invoiceId !== null && $invoiceId !== '') {
+                $txService->markSuccessfulWithItn((string) $tx['id'], $payload, $invoiceId);
+            }
+        } catch (\Throwable $e) {
+            error_log('checkout/notify activation failed: ' . $e->getMessage());
+            http_response_code(500);
+            echo 'Activation failed';
+            return;
+        }
+
         http_response_code(200);
         echo 'OK';
     }
 
-    private function activateFromPayment(array $tx): void
+    /**
+     * Creates subscription, paid invoice, and credit grant. Returns invoice id or null if nothing to do.
+     */
+    private function activateFromPayment(array $tx): ?string
     {
         $orgId = (string)($tx['organisation_id'] ?? '');
-        $planId = (string)($tx['plan_id'] ?? '');
-        $payload = $this->decodeTxPayload($tx['raw_payload'] ?? null);
+        $payloadData = $this->decodeTxPayload($tx['raw_response'] ?? ($tx['raw_payload'] ?? null));
+        $planId = (string)($payloadData['plan_id'] ?? '');
+        $payload = isset($payloadData['payload']) && is_array($payloadData['payload'])
+            ? $payloadData['payload']
+            : $payloadData;
         if ($planId === '') {
             $planId = $this->resolvePlanIdForMockPayment($payload);
         }
         if ($orgId === '' || $planId === '') {
-            return;
+            return null;
         }
 
-        $db = DB::getInstance()->getPdo();
-        $db->beginTransaction();
-        try {
-            $subscriptionService = new SubscriptionService();
-            $creditService = new CreditService();
-            $billingService = new BillingService();
-            $planService = new PlanService();
+        $subscriptionService = new SubscriptionService();
+        $creditService = new CreditService();
+        $billingService = new BillingService();
+        $planService = new PlanService();
 
-            $existing = $subscriptionService->getActive($orgId);
-            if ($existing) {
-                $subscriptionService->cancel((string)$existing['id']);
-            }
-
-            $billingCycle = (string)($payload['billing_cycle'] ?? 'monthly');
-            if (!in_array($billingCycle, ['monthly', 'annual'], true)) {
-                $billingCycle = 'monthly';
-            }
-            $subscriptionService->create($orgId, $planId, $billingCycle);
-            $plan = $planService->findById($planId);
-            $planName = (string)($plan['name'] ?? 'Plan');
-            $monthlyCredits = (float)($plan['credits_monthly'] ?? 0);
-            $amount = (float)($tx['amount'] ?? 0);
-
-            $invoiceId = $billingService->createInvoice($orgId, [[
-                'description' => $planName . ' subscription',
-                'quantity'    => 1,
-                'unit_price'  => $amount,
-                'total'       => $amount,
-            ]]);
-            $billingService->markPaid($invoiceId);
-
-            if ($monthlyCredits > 0) {
-                $creditService->addCredits($orgId, $monthlyCredits, 'Plan activation credits', 'subscription', $planId);
-            }
-
-            $db->commit();
-        } catch (\Exception $e) {
-            $db->rollBack();
+        $existing = $subscriptionService->getActive($orgId);
+        if ($existing) {
+            $subscriptionService->cancel((string)$existing['id']);
         }
+
+        $billingCycle = (string)($payload['billing_cycle'] ?? 'monthly');
+        if (!in_array($billingCycle, ['monthly', 'annual'], true)) {
+            $billingCycle = 'monthly';
+        }
+        $subscriptionService->create($orgId, $planId, $billingCycle);
+        $plan = $planService->findById($planId);
+        $planName = (string)($plan['name'] ?? 'Plan');
+        $monthlyCredits = (float)($plan['credits_monthly'] ?? 0);
+        $amount = (float)($tx['amount'] ?? 0);
+
+        $invoiceId = $billingService->createInvoice($orgId, [[
+            'description' => $planName . ' subscription',
+            'quantity'    => 1,
+            'unit_price'  => $amount,
+            'tax_rate'    => 0,
+            'line_total'  => $amount,
+        ]]);
+        $billingService->markPaid($invoiceId);
+
+        if ($monthlyCredits > 0) {
+            $creditService->addCredits($orgId, $monthlyCredits, 'Plan activation credits', 'subscription', $planId);
+        }
+
+        return $invoiceId;
     }
 
     private function decodeTxPayload(mixed $rawPayload): array

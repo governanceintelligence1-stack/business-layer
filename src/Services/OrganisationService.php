@@ -32,7 +32,14 @@ class OrganisationService
 
     public function create(array $data): string
     {
-        $slug = $this->generateSlug($data['name']);
+        $name = (string)($data['name'] ?? '');
+        $slug = $this->generateSlug($name);
+        $allowed = array_flip([
+            'name', 'slug', 'account_type', 'status', 'billing_email', 'tax_number',
+            'country', 'currency',
+        ]);
+        $data = array_intersect_key($data, $allowed);
+
         return $this->db->insert('organisations', array_merge([
             'slug'       => $slug,
             'status'     => 'active',
@@ -50,13 +57,16 @@ class OrganisationService
     public function getMembers(string $orgId): array
     {
         return $this->db->fetchAll(
-            'SELECT id, email, first_name, last_name, role, status, created_at
-             FROM users WHERE organisation_id = :org_id ORDER BY created_at',
+            'SELECT u.id, u.email, up.first_name, up.last_name, u.role, u.status, u.created_at
+             FROM users u
+             LEFT JOIN user_profiles up ON up.user_id = u.id
+             WHERE u.organisation_id = :org_id
+             ORDER BY u.created_at',
             ['org_id' => $orgId]
         );
     }
 
-    public function addMember(string $orgId, string $email, string $role = 'member'): bool
+    public function addMember(string $orgId, string $email, string $role = 'viewer'): bool
     {
         $result = $this->db->query(
             'UPDATE users SET organisation_id = :org_id, role = :role WHERE email = :email',

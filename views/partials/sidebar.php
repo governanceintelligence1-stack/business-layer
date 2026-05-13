@@ -65,13 +65,13 @@
     </nav>
 
     <div class="sidebar-footer">
-      <div class="sidebar-user">
+      <a href="/profile" class="sidebar-user sidebar-user-link">
         <div class="sidebar-avatar"><?= htmlspecialchars($userInitials) ?></div>
         <div>
           <div class="sidebar-user-name"><?= htmlspecialchars($userFullName) ?></div>
           <div class="sidebar-user-role"><?= htmlspecialchars($userRole) ?></div>
         </div>
-      </div>
+      </a>
       <a href="/auth/logout" class="btn btn-sm w-100 sidebar-logout-btn"
          data-confirm="Are you sure you want to log out?">
         Log Out

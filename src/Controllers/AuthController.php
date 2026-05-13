@@ -107,18 +107,21 @@ class AuthController
             $orgId = $orgService->create([
                 'name'         => $orgName,
                 'account_type' => $accountType,
-                'phone'        => $phone,
-                'country'      => $country,
+                'country'      => $country !== '' ? $country : 'ZA',
             ]);
 
             $userService->create([
-                'keycloak_id'     => 'pending-' . uniqid(),
-                'organisation_id' => $orgId,
-                'email'           => $email,
-                'first_name'      => $firstName,
-                'last_name'       => $lastName,
-                'role'            => 'admin',
-                'status'          => 'pending',
+                'keycloak_id'      => 'pending-' . uniqid(),
+                'organisation_id'  => $orgId,
+                'email'            => $email,
+                'username'         => $email,
+                'sso_provider'     => 'pending',
+                'email_verified'   => false,
+                'first_name'       => $firstName,
+                'last_name'        => $lastName,
+                'phone_number'     => $phone,
+                'role'             => 'admin',
+                'status'           => 'invited',
             ]);
 
             $creditService->getOrCreateAccount($orgId);

@@ -235,43 +235,26 @@
 
   <div class="pricing-grid">
     <?php
-    // If no plans in DB, show premium mock plans
-    $displayPlans = !empty($plans) ? $plans : [
-        [
-            'id' => 'mock-starter',
-            'name' => 'Starter',
-            'description' => 'Perfect for small teams and experimental projects.',
-            'price_monthly' => 450,
-            'credits_monthly' => 1000,
-            'features' => ['1,000 Monthly Credits', '3 Team Members', 'Standard Support', 'Basic Analytics'],
-            'featured' => false
-        ],
-        [
-            'id' => 'mock-pro',
-            'name' => 'Business Pro',
-            'description' => 'Advanced features and higher limits for growing businesses.',
-            'price_monthly' => 1250,
-            'credits_monthly' => 5000,
-            'features' => ['5,000 Monthly Credits', 'Unlimited Team Members', 'Priority Email Support', 'Advanced Forensics', 'Custom Reports'],
-            'featured' => true
-        ],
-        [
-            'id' => 'mock-enterprise',
-            'name' => 'Enterprise',
-            'description' => 'Maximum performance and dedicated support for large scale.',
-            'price_monthly' => 4500,
-            'credits_monthly' => 25000,
-            'features' => ['25,000 Monthly Credits', 'Dedicated Account Manager', '24/7 Phone Support', 'API Custom Integration', 'SLA Guarantee'],
-            'featured' => false
-        ]
-    ];
+    // Always render plans from the database.
+    $displayPlans = is_array($plans ?? null) ? $plans : [];
+
+    if (empty($displayPlans)):
+    ?>
+      <div class="pricing-card" style="grid-column: 1 / -1; text-align: center;">
+        <div class="plan-name">No plans available</div>
+        <div class="plan-description">
+          No active plans were found in the database. Seed or activate plans to display pricing options.
+        </div>
+      </div>
+    <?php
+    endif;
 
     foreach ($displayPlans as $plan):
-      $isFeatured = $plan['featured'] ?? false;
+      $isFeatured = (($plan['slug'] ?? '') === 'professional');
     ?>
       <div class="pricing-card <?= $isFeatured ? 'featured' : '' ?>">
         <?php if ($isFeatured): ?>
-          <div class="featured-badge">Most Popular</div>
+          <div class="featured-badge">Popular</div>
         <?php endif; ?>
 
         <div class="plan-name"><?= htmlspecialchars($plan['name']) ?></div>

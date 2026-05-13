@@ -93,7 +93,7 @@
 }
 
 .card-grid-2 {
-  grid-template-columns: repeat(2, minmax(0, 1fr));
+  grid-template-columns: minmax(0, 1.35fr) minmax(0, 0.85fr);
 }
 
 .card {
@@ -248,10 +248,53 @@ tr:hover td { background: var(--muted); }
   opacity: 0.5;
 }
 
+.billing-form-grid {
+  display: grid;
+  gap: 0.75rem;
+}
+
+.billing-form-grid.two {
+  grid-template-columns: 1fr 1fr;
+}
+
+.billing-input {
+  width: 100%;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  padding: 0.6rem 0.7rem;
+  font-size: 0.86rem;
+  font-family: inherit;
+}
+
+.billing-input:focus {
+  outline: none;
+  border-color: var(--primary);
+}
+
+.payment-method-item {
+  padding: 1rem;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 1rem;
+  margin-bottom: 0.75rem;
+}
+
+.add-card-panel {
+  margin-top: 1rem;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  padding: 1rem;
+  background: #fafafa;
+}
+
 @media (max-width: 1024px) {
   .page-header { left: 0; padding: 2rem 1rem 0.75rem; }
   .billing-shell { padding-top: 9rem; }
   .card-grid-3, .card-grid-2 { grid-template-columns: 1fr; }
+  .billing-form-grid.two { grid-template-columns: 1fr; }
 }
 </style>
 
@@ -285,7 +328,7 @@ tr:hover td { background: var(--muted); }
       <div class="card-grid card-grid-3 mb-4">
         <div class="stat-card card">
           <span class="stat-label">Amount Due</span>
-          <span class="stat-value">R<?= number_format((float)($invoice['amount_total'] ?? 0), 2) ?></span>
+          <span class="stat-value">R<?= number_format((float)($invoice['amount_total'] ?? $invoice['total'] ?? 0), 2) ?></span>
         </div>
         <div class="stat-card card">
           <span class="stat-label">Due Date</span>
@@ -375,7 +418,7 @@ tr:hover td { background: var(--muted); }
                   <tr>
                     <td style="font-family:monospace;"><?= htmlspecialchars($inv['invoice_number']) ?></td>
                     <td><?= htmlspecialchars(substr($inv['created_at'], 0, 10)) ?></td>
-                    <td style="font-weight:600;">R<?= number_format((float)($inv['amount_total'] ?? 0), 2) ?></td>
+                    <td style="font-weight:600;">R<?= number_format((float)($inv['amount_total'] ?? $inv['total'] ?? 0), 2) ?></td>
                     <td>
                       <span class="badge badge-<?= ($inv['status'] ?? '') === 'paid' ? 'active' : 'pending' ?>">
                         <span class="badge-dot"></span>
@@ -406,23 +449,81 @@ tr:hover td { background: var(--muted); }
             <h3 class="card-title">Payment Methods</h3>
             <p class="card-description">Manage how you pay for your subscription.</p>
           </div>
-          <button class="btn btn-sm">Add Method</button>
         </div>
 
-        <?php
-        $pm = $paymentMethod ?? ['brand' => 'Visa', 'last4' => '4242', 'expiry' => '12/2026'];
-        ?>
-        <div class="payment-method" style="padding: 1rem; border: 1px solid var(--border); border-radius: var(--radius-sm); display: flex; align-items: center; justify-content: space-between;">
-          <div style="display: flex; align-items: center; gap: 1rem;">
-            <div style="width: 40px; height: 25px; background: #f0f0f0; border-radius: 4px; display: flex; align-items: center; justify-content: center; font-size: 0.6rem; font-weight: 700; color: #666;"><?= strtoupper(htmlspecialchars($pm['brand'] ?? 'Visa')) ?></div>
-            <div>
-              <div style="font-size: 0.875rem; font-weight: 600;"><?= htmlspecialchars($pm['brand'] ?? 'Visa') ?> ending in <?= htmlspecialchars($pm['last4'] ?? '4242') ?></div>
-              <div style="font-size: 0.75rem; color: var(--muted-foreground);">Expires <?= htmlspecialchars($pm['expiry'] ?? '12/2026') ?></div>
+        <?php $methods = $paymentMethods ?? []; ?>
+        <?php if (!empty($methods)): ?>
+          <?php foreach ($methods as $pm): ?>
+            <div class="payment-method-item">
+              <div style="display: flex; align-items: center; gap: 1rem;">
+                <div style="width: 40px; height: 25px; background:rgb(185, 185, 185); border-radius: 4px; display: flex; align-items: center; justify-content: center; font-size: 0.6rem; font-weight: 700; color: #666;"><?= strtoupper(htmlspecialchars((string)($pm['brand'] ?? 'CARD'))) ?></div>
+                <div>
+                  <div style="font-size: 0.875rem; font-weight: 600;"><?= htmlspecialchars((string)($pm['brand'] ?? 'Card')) ?> ending in <?= htmlspecialchars((string)($pm['last4'] ?? '0000')) ?></div>
+                  <div style="font-size: 0.75rem; color: var(--muted-foreground);">Expires <?= htmlspecialchars((string)($pm['expiry_month'] ?? '--')) ?>/<?= htmlspecialchars((string)($pm['expiry_year'] ?? '----')) ?></div>
+                </div>
+              </div>
+              <?php if (!empty($pm['is_default'])): ?>
+                <span class="badge">Primary</span>
+              <?php endif; ?>
             </div>
+          <?php endforeach; ?>
+        <?php else: ?>
+          <div class="empty-state" style="margin-bottom: 1rem;">
+            <div class="empty-state-icon">💳</div>
+            <h3>No payment methods yet</h3>
+            <p>Add your first card below.</p>
           </div>
-          <span class="badge">Primary</span>
+        <?php endif; ?>
+
+        <div style="margin-top: 1rem; display:flex; justify-content:flex-end;">
+          <button class="btn btn-sm btn-primary" type="button" id="showAddCardBtn">Add New Card</button>
         </div>
-        
+
+        <div id="addCardPanel" class="add-card-panel" style="display: none;">
+          <form method="post" action="/billing/payment-methods">
+            <div class="billing-form-grid">
+              <input class="billing-input" type="text" name="cardholder_name" placeholder="Cardholder name" required>
+              <input class="billing-input" type="text" name="card_number" inputmode="numeric" placeholder="Card number" required>
+            </div>
+            <div class="billing-form-grid two" style="margin-top: 0.75rem;">
+              <input class="billing-input" type="text" name="expiry_month" inputmode="numeric" placeholder="Expiry month (MM)" required>
+              <input class="billing-input" type="text" name="expiry_year" inputmode="numeric" placeholder="Expiry year (YYYY)" required>
+            </div>
+            <div class="billing-form-grid two" style="margin-top: 0.75rem;">
+              <input class="billing-input" type="password" name="cvc" inputmode="numeric" placeholder="CVC (not stored)" autocomplete="off">
+              <label style="display:flex; align-items:center; gap:0.5rem; font-size:0.82rem; color:var(--muted-foreground);">
+                <input type="checkbox" name="set_default" value="1">
+                Set as default payment method
+              </label>
+            </div>
+            <div style="margin-top: 0.9rem; display:flex; justify-content:flex-end; gap:0.5rem;">
+              <button class="btn btn-sm btn-secondary" type="button" id="cancelAddCardBtn">Cancel</button>
+              <button class="btn btn-primary btn-sm" type="submit">Save Card</button>
+            </div>
+            <p style="margin-top:0.65rem; margin-bottom:0; font-size:0.75rem; color:var(--muted-foreground);">
+              For security, full card number and CVC are never stored. Only masked details (brand, last 4 digits, expiry) are saved.
+            </p>
+          </form>
+        </div>
+        <script>
+          (function () {
+            var showBtn = document.getElementById('showAddCardBtn');
+            var cancelBtn = document.getElementById('cancelAddCardBtn');
+            var panel = document.getElementById('addCardPanel');
+            if (!showBtn || !panel) return;
+            showBtn.addEventListener('click', function () {
+              panel.style.display = 'block';
+              showBtn.style.display = 'none';
+            });
+            if (cancelBtn) {
+              cancelBtn.addEventListener('click', function () {
+                panel.style.display = 'none';
+                showBtn.style.display = 'inline-flex';
+              });
+            }
+          })();
+        </script>
+
         <div style="margin-top: 1.5rem; padding: 1rem; background: var(--muted); border-radius: var(--radius-sm); font-size: 0.82rem; color: var(--muted-foreground);">
           <strong>Billing Address:</strong><br>
           123 Business Way, Suite 100<br>

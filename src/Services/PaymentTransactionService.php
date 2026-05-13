@@ -25,15 +25,20 @@ class PaymentTransactionService
     ): string {
         return $this->db->insert('payment_transactions', [
             'organisation_id'   => $orgId,
-            'user_id'           => $userId ?: null,
-            'plan_id'           => $planId ?: null,
+            'invoice_id'        => null,
             'payment_method_id' => $paymentMethodId,
             'provider'          => 'payfast',
-            'provider_ref'      => $providerRef,
+            'provider_transaction_id' => null,
+            'merchant_reference' => $providerRef,
+            'idempotency_key'   => $providerRef,
             'amount'            => $amount,
             'currency'          => 'ZAR',
             'status'            => 'pending',
-            'raw_payload'       => json_encode($payload, JSON_UNESCAPED_SLASHES),
+            'raw_response'      => json_encode([
+                'user_id' => $userId ?: null,
+                'plan_id' => $planId ?: null,
+                'payload' => $payload,
+            ], JSON_UNESCAPED_SLASHES),
             'created_at'        => date('Y-m-d H:i:s'),
             'updated_at'        => date('Y-m-d H:i:s'),
         ]);
@@ -42,7 +47,7 @@ class PaymentTransactionService
     public function findByProviderRef(string $providerRef): array|false
     {
         return $this->db->fetch(
-            'SELECT * FROM payment_transactions WHERE provider_ref = :ref',
+            'SELECT * FROM payment_transactions WHERE merchant_reference = :ref',
             ['ref' => $providerRef]
         );
     }
@@ -50,8 +55,8 @@ class PaymentTransactionService
     public function markPaid(string $id, array $payload): int
     {
         return $this->db->update('payment_transactions', [
-            'status'      => 'paid',
-            'raw_payload' => json_encode($payload, JSON_UNESCAPED_SLASHES),
+            'status'      => 'successful',
+            'raw_response' => json_encode($payload, JSON_UNESCAPED_SLASHES),
             'updated_at'  => date('Y-m-d H:i:s'),
         ], ['id' => $id]);
     }
@@ -60,7 +65,7 @@ class PaymentTransactionService
     {
         return $this->db->update('payment_transactions', [
             'status'      => 'cancelled',
-            'raw_payload' => json_encode($payload, JSON_UNESCAPED_SLASHES),
+            'raw_response' => json_encode($payload, JSON_UNESCAPED_SLASHES),
             'updated_at'  => date('Y-m-d H:i:s'),
         ], ['id' => $id]);
     }
@@ -69,7 +74,7 @@ class PaymentTransactionService
     {
         return $this->db->update('payment_transactions', [
             'status'      => 'failed',
-            'raw_payload' => json_encode($payload, JSON_UNESCAPED_SLASHES),
+            'raw_response' => json_encode($payload, JSON_UNESCAPED_SLASHES),
             'updated_at'  => date('Y-m-d H:i:s'),
         ], ['id' => $id]);
     }
@@ -77,8 +82,38 @@ class PaymentTransactionService
     public function markActivated(string $id): int
     {
         return $this->db->update('payment_transactions', [
-            'activated_at' => date('Y-m-d H:i:s'),
+            'status'       => 'successful',
             'updated_at'   => date('Y-m-d H:i:s'),
         ], ['id' => $id]);
+    }
+
+    /**
+     * Mark successful after activation, merge ITN into raw_response, link invoice.
+     *
+     * @param array<string, mixed> $itnPayload
+     */
+    public function markSuccessfulWithItn(string $id, array $itnPayload, ?string $invoiceId = null): int
+    {
+        $row = $this->db->fetch('SELECT raw_response FROM payment_transactions WHERE id = :id', ['id' => $id]);
+        $existing = [];
+        if (!empty($row['raw_response']) && is_string($row['raw_response'])) {
+            $decoded = json_decode($row['raw_response'], true);
+            $existing = is_array($decoded) ? $decoded : [];
+        }
+
+        $merged = array_merge($existing, ['payfast_itn' => $itnPayload]);
+        $pfId = trim((string)($itnPayload['pf_payment_id'] ?? ''));
+
+        $data = [
+            'status'                 => 'successful',
+            'raw_response'           => json_encode($merged, JSON_UNESCAPED_SLASHES),
+            'updated_at'             => date('Y-m-d H:i:s'),
+            'provider_transaction_id' => $pfId !== '' ? $pfId : null,
+        ];
+        if ($invoiceId !== null && $invoiceId !== '') {
+            $data['invoice_id'] = $invoiceId;
+        }
+
+        return $this->db->update('payment_transactions', $data, ['id' => $id]);
     }
 }

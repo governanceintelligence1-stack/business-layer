@@ -1,0 +1,15 @@
+{
+    "provider_ref": "PF-20260513092928-40FCA3DE",
+    "status": "pending",
+    "provider": "payfast",
+    "organisation_id": "16145349-6f70-4b5e-9873-70107d2cecb8",
+    "user_id": "4643e849-286c-4058-8bff-69ad82514dd1",
+    "plan_id": "5b58291a-883e-40f3-8708-302979442da7",
+    "requested_plan_id": "5b58291a-883e-40f3-8708-302979442da7",
+    "plan_name": "Professional",
+    "billing_cycle": "monthly",
+    "amount": "1500.00",
+    "currency": "ZAR",
+    "updated_at": "2026-05-13T09:29:28+02:00",
+    "created_at": "2026-05-13T09:29:28+02:00"
+}

@@ -31,10 +31,17 @@
         </div>
         <div class="form-row form-row-2">
           <div class="form-group">
-            <label class="form-label">Phone</label>
-            <input type="tel" name="phone" class="form-control"
-                   value="<?= htmlspecialchars($org['phone'] ?? '') ?>">
+            <label class="form-label">Billing email</label>
+            <input type="email" name="billing_email" class="form-control"
+                   value="<?= htmlspecialchars($org['billing_email'] ?? '') ?>">
           </div>
+          <div class="form-group">
+            <label class="form-label">Tax number</label>
+            <input type="text" name="tax_number" class="form-control"
+                   value="<?= htmlspecialchars($org['tax_number'] ?? '') ?>">
+          </div>
+        </div>
+        <div class="form-row form-row-2">
           <div class="form-group">
             <label class="form-label">Country</label>
             <select name="country" class="form-control">

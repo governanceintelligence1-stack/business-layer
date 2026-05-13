@@ -22,10 +22,45 @@ class PlanController
             $plans       = $planService->getActive();
             foreach ($plans as &$plan) {
                 $plan['products'] = $planService->getPlanProducts($plan['id']);
-                $plan['features'] = is_string($plan['features'] ?? '')
+                $decodedFeatures = is_string($plan['features'] ?? '')
                     ? json_decode($plan['features'], true)
                     : ($plan['features'] ?? []);
+
+                if (!is_array($decodedFeatures)) {
+                    $plan['features'] = [];
+                    continue;
+                }
+
+                $isAssoc = array_keys($decodedFeatures) !== range(0, count($decodedFeatures) - 1);
+                if (!$isAssoc) {
+                    $plan['features'] = $decodedFeatures;
+                    continue;
+                }
+
+                $featureLabelMap = [
+                    'ocr' => 'OCR',
+                    'api_access' => 'API Access',
+                    'mxa_mobile' => 'MXA Mobile',
+                    'transcription' => 'Transcription',
+                    'forensic_upload' => 'Forensic Upload',
+                    'bank_statement_analysis' => 'Bank Statement Analysis',
+                    'custom_limits' => 'Custom Limits',
+                    'file_comparison' => 'File Comparison',
+                    'priority_support' => 'Priority Support',
+                ];
+
+                $normalizedFeatures = [];
+                foreach ($decodedFeatures as $key => $enabled) {
+                    if (!$enabled) {
+                        continue;
+                    }
+
+                    $normalizedFeatures[] = $featureLabelMap[$key]
+                        ?? ucwords(str_replace('_', ' ', (string) $key));
+                }
+                $plan['features'] = $normalizedFeatures;
             }
+            unset($plan);
         } catch (\Exception $e) {
             // Database may not be set up yet, continue with empty plans
         }

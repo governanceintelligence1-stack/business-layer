@@ -41,9 +41,10 @@ class OrganisationController
 
         $orgService = new OrganisationService();
         $orgService->update($orgId, [
-            'name'    => trim($_POST['name'] ?? ''),
-            'phone'   => trim($_POST['phone'] ?? ''),
-            'country' => trim($_POST['country'] ?? ''),
+            'name'          => trim($_POST['name'] ?? ''),
+            'billing_email' => trim($_POST['billing_email'] ?? ''),
+            'tax_number'    => trim($_POST['tax_number'] ?? ''),
+            'country'       => trim($_POST['country'] ?? ''),
         ]);
 
         Session::flash('success', 'Organisation updated successfully.');

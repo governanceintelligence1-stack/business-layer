@@ -22,17 +22,15 @@ class ApiKeyService
 
         $data = [
             'organisation_id' => $orgId,
-            'user_id'         => $userId,
+            'created_by'      => $userId,
             'name'            => $name,
             'key_hash'        => $keyHash,
-            'key_prefix'      => $prefix,
+            'prefix'          => $prefix,
+            'scopes'          => '[]',
             'status'          => 'active',
             'created_at'      => date('Y-m-d H:i:s'),
+            'updated_at'      => date('Y-m-d H:i:s'),
         ];
-
-        if (!empty($productId)) {
-            $data['product_id'] = $productId;
-        }
 
         $id = $this->db->insert('api_keys', $data);
 
@@ -61,9 +59,8 @@ class ApiKeyService
     public function getForOrganisation(string $orgId): array
     {
         return $this->db->fetchAll(
-            'SELECT ak.*, p.name as product_name
+            'SELECT ak.*
              FROM api_keys ak
-             LEFT JOIN products p ON ak.product_id = p.id
              WHERE ak.organisation_id = :org_id
              ORDER BY ak.created_at DESC',
             ['org_id' => $orgId]
@@ -72,15 +69,25 @@ class ApiKeyService
 
     public function logUsage(string $keyId, string $endpoint, float $creditsUsed = 0, int $responseCode = 200): void
     {
+        $keyRow = $this->db->fetch(
+            'SELECT organisation_id FROM api_keys WHERE id = :id',
+            ['id' => $keyId]
+        );
+        if (!$keyRow || empty($keyRow['organisation_id'])) {
+            return;
+        }
+
         $this->db->insert('api_usage_logs', [
-            'api_key_id'    => $keyId,
-            'endpoint'      => $endpoint,
-            'credits_used'  => $creditsUsed,
-            'response_code' => $responseCode,
-            'created_at'    => date('Y-m-d H:i:s'),
+            'organisation_id' => $keyRow['organisation_id'],
+            'api_key_id'      => $keyId,
+            'endpoint'        => $endpoint,
+            'credits_charged' => $creditsUsed,
+            'units'           => 1,
+            'response_code'   => $responseCode,
+            'created_at'      => date('Y-m-d H:i:s'),
         ]);
 
-        $this->db->update('api_keys', ['last_used_at' => date('Y-m-d H:i:s')], ['id' => $keyId]);
+        $this->db->update('api_keys', ['last_used_at' => date('Y-m-d H:i:s'), 'updated_at' => date('Y-m-d H:i:s')], ['id' => $keyId]);
     }
 
     public function getUsageStats(string $apiKey): array
@@ -96,7 +103,7 @@ class ApiKeyService
         }
 
         return $this->db->fetchAll(
-            'SELECT endpoint, COUNT(*) as calls, SUM(credits_used) as total_credits
+            'SELECT endpoint, COUNT(*) as calls, SUM(credits_charged) as total_credits
              FROM api_usage_logs WHERE api_key_id = :key_id
              GROUP BY endpoint ORDER BY calls DESC',
             ['key_id' => $key['id']]

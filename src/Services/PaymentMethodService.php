@@ -49,12 +49,15 @@ class PaymentMethodService
 
         return $this->db->insert('payment_methods', [
             'organisation_id' => $orgId,
-            'user_id'         => $userId,
+            'provider'        => 'payfast',
+            'provider_customer_id' => $userId !== '' ? $userId : null,
+            'provider_payment_method_id' => null,
+            'type'            => 'card',
             'brand'           => $brand ?: 'Card',
             'last4'           => $last4,
             'expiry_month'    => $expiryMonth ?: null,
             'expiry_year'     => $expiryYear ?: null,
-            'cardholder_name' => $cardholderName ?: null,
+            'metadata'        => json_encode(['cardholder_name' => $cardholderName ?: null], JSON_UNESCAPED_SLASHES),
             'is_default'      => $setDefault,
             'status'          => 'active',
             'created_at'      => date('Y-m-d H:i:s'),

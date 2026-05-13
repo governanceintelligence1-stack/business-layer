@@ -42,6 +42,12 @@ class SubscriptionService
 
     public function create(string $orgId, string $planId, string $billingCycle = 'monthly'): string
     {
+        $plan = $this->db->fetch('SELECT price_monthly, price_annual, currency FROM plans WHERE id = :id', ['id' => $planId]);
+        $renewal = $billingCycle === 'annual'
+            ? (float)($plan['price_annual'] ?? 0)
+            : (float)($plan['price_monthly'] ?? 0);
+        $currency = (string)($plan['currency'] ?? 'ZAR');
+
         $now = date('Y-m-d H:i:s');
         $end = $billingCycle === 'annual'
             ? date('Y-m-d H:i:s', strtotime('+1 year'))
@@ -54,6 +60,8 @@ class SubscriptionService
             'status'               => 'active',
             'current_period_start' => $now,
             'current_period_end'   => $end,
+            'renewal_amount'       => $renewal,
+            'currency'             => $currency,
             'created_at'           => $now,
             'updated_at'           => $now,
         ]);

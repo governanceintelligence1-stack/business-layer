@@ -33,6 +33,35 @@ class Middleware
         }
     }
 
+    private static function loadBypassUserFromDatabase(string $email): ?array
+    {
+        try {
+            $db = DB::getInstance();
+            $row = $db->fetch(
+                'SELECT u.id, u.email, u.role, u.organisation_id, up.first_name, up.last_name
+                 FROM users u
+                 LEFT JOIN user_profiles up ON up.user_id = u.id
+                 WHERE lower(u.email) = lower(:email)
+                 LIMIT 1',
+                ['email' => $email]
+            );
+            if (!$row || empty($row['id'])) {
+                return null;
+            }
+
+            return [
+                'id'                => (string) $row['id'],
+                'email'             => (string) ($row['email'] ?? ''),
+                'first_name'        => (string) ($row['first_name'] ?? ''),
+                'last_name'         => (string) ($row['last_name'] ?? ''),
+                'role'              => (string) ($row['role'] ?? 'viewer'),
+                'organisation_id'   => (string) ($row['organisation_id'] ?? ''),
+            ];
+        } catch (\Exception $e) {
+            return null;
+        }
+    }
+
     private static function isAuthBypassed(): bool
     {
         $value = strtolower(trim((string) ($_ENV['AUTH_BYPASS'] ?? 'false')));
@@ -46,6 +75,16 @@ class Middleware
             $organisationId = (string)($current['organisation_id'] ?? '');
             if ($organisationId === '') {
                 $organisationId = self::resolveBypassOrganisationId();
+            }
+
+            $email = trim((string)($_ENV['AUTH_BYPASS_USER_EMAIL'] ?? 'test.user@gismartanalytics.com'));
+            $fromDb = self::loadBypassUserFromDatabase($email);
+            if ($fromDb !== null) {
+                if ($organisationId !== '' && empty($fromDb['organisation_id'])) {
+                    $fromDb['organisation_id'] = $organisationId;
+                }
+                Session::set('user', $fromDb);
+                return;
             }
 
             if (!Session::has('user')) {

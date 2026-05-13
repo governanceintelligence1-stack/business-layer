@@ -1,41 +1,97 @@
 -- plans_seed.sql
-INSERT INTO plans (name, slug, description, price_monthly, price_annual, credits_monthly, max_users, max_api_keys, features, status) VALUES
-(
+UPDATE plans
+SET
+  name = 'Starter',
+  description = 'Perfect for small teams and experimental projects.',
+  price_monthly = 450.00,
+  price_annual = 4500.00,
+  credits_monthly = 1000,
+  max_users = 3,
+  max_api_keys = 2,
+  features = '["1,000 Monthly Credits","Up to 3 team members","2 API keys","Governance Analytics","ESG Scoring","Standard email support"]'::jsonb,
+  status = 'active',
+  updated_at = NOW()
+WHERE slug = 'starter';
+
+INSERT INTO plans (name, slug, description, price_monthly, price_annual, credits_monthly, max_users, max_api_keys, features, status)
+SELECT
   'Starter',
   'starter',
-  'Perfect for small teams getting started with governance intelligence.',
-  1500.00, 15000.00, 5000, 5, 3,
-  '["Up to 5 users","3 API keys","Governance Analytics access","ESG Scoring access","Email support","Standard API rate limits"]'::jsonb,
+  'Perfect for small teams and experimental projects.',
+  450.00, 4500.00, 1000, 3, 2,
+  '["1,000 Monthly Credits","Up to 3 team members","2 API keys","Governance Analytics","ESG Scoring","Standard email support"]'::jsonb,
   'active'
-),
-(
-  'Professional',
+WHERE NOT EXISTS (SELECT 1 FROM plans WHERE slug = 'starter');
+
+UPDATE plans
+SET
+  name = 'Business Pro',
+  description = 'Advanced features and higher limits for growing businesses.',
+  price_monthly = 1250.00,
+  price_annual = 12500.00,
+  credits_monthly = 5000,
+  max_users = 15,
+  max_api_keys = 8,
+  features = '["5,000 Monthly Credits","Up to 15 team members","8 API keys","All 6 intelligence products","Priority support","Advanced reporting","Webhook integrations"]'::jsonb,
+  status = 'active',
+  updated_at = NOW()
+WHERE slug = 'professional';
+
+INSERT INTO plans (name, slug, description, price_monthly, price_annual, credits_monthly, max_users, max_api_keys, features, status)
+SELECT
+  'Business Pro',
   'professional',
-  'For growing organisations needing comprehensive governance coverage.',
-  4500.00, 45000.00, 20000, 25, 10,
-  '["Up to 25 users","10 API keys","All 6 products included","Priority support","Advanced reporting","Webhook integrations","Higher API rate limits"]'::jsonb,
+  'Advanced features and higher limits for growing businesses.',
+  1250.00, 12500.00, 5000, 15, 8,
+  '["5,000 Monthly Credits","Up to 15 team members","8 API keys","All 6 intelligence products","Priority support","Advanced reporting","Webhook integrations"]'::jsonb,
   'active'
-),
-(
+WHERE NOT EXISTS (SELECT 1 FROM plans WHERE slug = 'professional');
+
+UPDATE plans
+SET
+  name = 'Enterprise',
+  description = 'Maximum performance and dedicated support for large scale organisations.',
+  price_monthly = 4500.00,
+  price_annual = 45000.00,
+  credits_monthly = 25000,
+  max_users = 999,
+  max_api_keys = 50,
+  features = '["25,000 Monthly Credits","Unlimited users","50 API keys","All products + early access","Dedicated account manager","24/7 SLA support","Custom integrations"]'::jsonb,
+  status = 'active',
+  updated_at = NOW()
+WHERE slug = 'enterprise';
+
+INSERT INTO plans (name, slug, description, price_monthly, price_annual, credits_monthly, max_users, max_api_keys, features, status)
+SELECT
   'Enterprise',
   'enterprise',
-  'Custom solutions and dedicated support for large organisations.',
-  12000.00, 120000.00, 100000, 999, 50,
-  '["Unlimited users","50 API keys","All products + early access","Dedicated account manager","SLA support","Custom integrations","Unlimited API rate limits","On-premise deployment option"]'::jsonb,
+  'Maximum performance and dedicated support for large scale organisations.',
+  4500.00, 45000.00, 25000, 999, 50,
+  '["25,000 Monthly Credits","Unlimited users","50 API keys","All products + early access","Dedicated account manager","24/7 SLA support","Custom integrations"]'::jsonb,
   'active'
-)
-ON CONFLICT (slug) DO NOTHING;
+WHERE NOT EXISTS (SELECT 1 FROM plans WHERE slug = 'enterprise');
 
 -- Link all products to Professional and Enterprise plans
 INSERT INTO plan_products (plan_id, product_id)
 SELECT p.id, pr.id
 FROM plans p, products pr
 WHERE p.slug IN ('professional', 'enterprise')
-ON CONFLICT DO NOTHING;
+  AND NOT EXISTS (
+    SELECT 1
+    FROM plan_products pp
+    WHERE pp.plan_id = p.id
+      AND pp.product_id = pr.id
+  );
 
 -- Link starter products (governance-analytics + esg-scoring only)
 INSERT INTO plan_products (plan_id, product_id)
 SELECT p.id, pr.id
 FROM plans p, products pr
-WHERE p.slug = 'starter' AND pr.slug IN ('governance-analytics', 'esg-scoring')
-ON CONFLICT DO NOTHING;
+WHERE p.slug = 'starter'
+  AND pr.slug IN ('governance-analytics', 'esg-scoring')
+  AND NOT EXISTS (
+    SELECT 1
+    FROM plan_products pp
+    WHERE pp.plan_id = p.id
+      AND pp.product_id = pr.id
+  );

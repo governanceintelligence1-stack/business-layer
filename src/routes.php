@@ -14,6 +14,7 @@ use GI\Controllers\ApiKeyController;
 use GI\Controllers\BillingController;
 use GI\Controllers\ApiController;
 use GI\Controllers\UpdatesController;
+use GI\Controllers\ProfileController;
 
 /** @var Router $router */
 
@@ -30,6 +31,7 @@ $router->post('/auth/register', [AuthController::class, 'registerPost']);
 // Dashboard
 $router->get('/dashboard', [DashboardController::class, 'index']);
 $router->get('/updates', [UpdatesController::class, 'index']);
+$router->get('/profile', [ProfileController::class, 'index']);
 
 // Organisation
 $router->get('/organisation', [OrganisationController::class, 'index']);
@@ -69,6 +71,7 @@ $router->post('/api-keys/revoke/{id}', [ApiKeyController::class, 'revoke']);
 
 // Billing
 $router->get('/billing', [BillingController::class, 'index']);
+$router->post('/billing/payment-methods', [BillingController::class, 'storePaymentMethod']);
 $router->get('/billing/invoice/{id}', [BillingController::class, 'invoice']);
 
 // REST API v1
