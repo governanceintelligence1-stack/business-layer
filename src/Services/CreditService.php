@@ -390,6 +390,204 @@ class CreditService
         );
     }
 
+    /** @return list<string> */
+    public static function usageLedgerTypes(): array
+    {
+        return ['debit_usage', 'capture', 'debit'];
+    }
+
+    /** @return list<string> */
+    public static function creditInLedgerTypes(): array
+    {
+        return ['credit_topup', 'subscription_credit', 'credit_grant'];
+    }
+
+    public static function isUsageLedgerType(string $type): bool
+    {
+        return in_array($type, self::usageLedgerTypes(), true);
+    }
+
+    public static function isCreditInLedgerType(string $type): bool
+    {
+        return in_array($type, self::creditInLedgerTypes(), true);
+    }
+
+    private static function usageTypesSqlInClause(): string
+    {
+        return 'IN (' . implode(', ', array_map(static fn (string $t): string => "'" . $t . "'", self::usageLedgerTypes())) . ')';
+    }
+
+    /**
+     * Calendar month window in the default timezone (same boundaries as usage aggregation).
+     *
+     * @return array{total: float, label: string, range_start: string, range_end_exclusive: string}
+     */
+    public function getCreditsUsageThisCalendarMonth(string $orgId): array
+    {
+        $tzName = date_default_timezone_get() ?: 'UTC';
+        $tz    = new \DateTimeZone($tzName);
+        $ref   = new \DateTimeImmutable('today', $tz);
+        $start = $ref->modify('first day of this month')->setTime(0, 0, 0);
+        $endEx = $start->modify('+1 month');
+
+        $ctx = [
+            'total'                 => 0.0,
+            'label'                 => $start->format('F Y'),
+            'range_start'           => $start->format('Y-m-d'),
+            'range_end_exclusive'   => $endEx->format('Y-m-d'),
+        ];
+
+        if ($orgId === '') {
+            return $ctx;
+        }
+
+        $inClause = self::usageTypesSqlInClause();
+        $fromStr  = $start->format('Y-m-d H:i:s');
+        $toStr    = $endEx->format('Y-m-d H:i:s');
+
+        $row = $this->db->fetch(
+            "SELECT COALESCE(SUM(amount), 0) AS total FROM credit_transactions
+             WHERE organisation_id = :org_id
+               AND type {$inClause}
+               AND created_at >= :from_ts
+               AND created_at < :to_ts",
+            ['org_id' => $orgId, 'from_ts' => $fromStr, 'to_ts' => $toStr]
+        );
+
+        $ctx['total'] = (float) ($row['total'] ?? 0);
+
+        return $ctx;
+    }
+
+    /**
+     * Daily consumed credits from the ledger for dashboard charting.
+     * Counts {@see deductCredits} (`debit_usage`) and finalized job usage (`capture`).
+     * Ignores top-ups, reservations, and releases so the line reflects actual spend.
+     *
+     * @return array{points: list<array{label: string, val: float}>, caption: string}
+     */
+    public function getUsageTrendLastDays(string $orgId, int $days = 7): array
+    {
+        $days = max(1, min(31, $days));
+        $tzName = date_default_timezone_get() ?: 'UTC';
+        $tz    = new \DateTimeZone($tzName);
+        $today = new \DateTimeImmutable('today', $tz);
+        $first = $today->modify('-' . ($days - 1) . ' days');
+        $after  = $today->modify('+1 day');
+
+        if ($orgId === '') {
+            return [
+                'points'  => self::buildEmptyTrendPoints($first, $after),
+                'caption' => 'Select an organisation to see credit usage.',
+            ];
+        }
+
+        $fromStr = $first->format('Y-m-d H:i:s');
+        $toStr   = $after->format('Y-m-d H:i:s');
+
+        $usageIn = self::usageTypesSqlInClause();
+        $rows    = $this->db->fetchAll(
+            "SELECT DATE(created_at) AS day, COALESCE(SUM(amount), 0) AS used
+             FROM credit_transactions
+             WHERE organisation_id = :org_id
+               AND type {$usageIn}
+               AND created_at >= :from_ts
+               AND created_at < :to_ts
+             GROUP BY DATE(created_at)
+             ORDER BY day ASC",
+            ['org_id' => $orgId, 'from_ts' => $fromStr, 'to_ts' => $toStr]
+        );
+
+        $byDay = [];
+        foreach ($rows as $row) {
+            $raw = (string) ($row['day'] ?? '');
+            $dayKey = substr($raw, 0, 10);
+            if ($dayKey !== '') {
+                $byDay[$dayKey] = (float) ($row['used'] ?? 0);
+            }
+        }
+
+        $points = [];
+        $cursor = $first;
+        while ($cursor < $after) {
+            $key = $cursor->format('Y-m-d');
+            $points[] = [
+                'label' => $cursor->format('D'),
+                'val'   => (float) ($byDay[$key] ?? 0.0),
+            ];
+            $cursor = $cursor->modify('+1 day');
+        }
+
+        $total = 0.0;
+        foreach ($points as $p) {
+            $total += $p['val'];
+        }
+
+        $caption = self::formatUsageTrendCaption($points, $total, $days);
+
+        return ['points' => $points, 'caption' => $caption];
+    }
+
+    /**
+     * @param list<array{label: string, val: float}> $points
+     */
+    private static function formatUsageTrendCaption(array $points, float $total, int $days): string
+    {
+        if ($total <= 0) {
+            return 'No usage in the last ' . $days . ' days.';
+        }
+
+        $totalStr = self::formatCreditsAmount($total);
+        $n        = count($points);
+        if ($n < 4) {
+            return $totalStr . ' credits used (last ' . $days . ' days)';
+        }
+
+        $mid   = (int) ceil($n / 2);
+        $early = 0.0;
+        $late  = 0.0;
+        for ($i = 0; $i < $mid; $i++) {
+            $early += $points[$i]['val'];
+        }
+        for ($i = $mid; $i < $n; $i++) {
+            $late += $points[$i]['val'];
+        }
+
+        if ($early <= 0 && $late > 0) {
+            return $totalStr . ' credits · usage picked up in the second half';
+        }
+        if ($early <= 0) {
+            return $totalStr . ' credits used (last ' . $days . ' days)';
+        }
+
+        $pct = (($late - $early) / $early) * 100.0;
+
+        return $totalStr . ' credits · ' . sprintf('%+.1f%%', $pct) . ' recent vs earlier period';
+    }
+
+    private static function formatCreditsAmount(float $v): string
+    {
+        $s = number_format($v, 2, '.', '');
+        $s = rtrim(rtrim($s, '0'), '.');
+
+        return $s === '' ? '0' : $s;
+    }
+
+    /**
+     * @return list<array{label: string, val: float}>
+     */
+    private static function buildEmptyTrendPoints(\DateTimeImmutable $first, \DateTimeImmutable $after): array
+    {
+        $points = [];
+        $cursor = $first;
+        while ($cursor < $after) {
+            $points[] = ['label' => $cursor->format('D'), 'val' => 0.0];
+            $cursor    = $cursor->modify('+1 day');
+        }
+
+        return $points;
+    }
+
     private function parseOptionalUuid(string $id): ?string
     {
         $id = trim($id);

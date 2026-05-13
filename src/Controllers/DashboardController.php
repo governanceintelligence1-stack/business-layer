@@ -10,6 +10,7 @@ use GI\Services\CreditService;
 use GI\Services\SubscriptionService;
 use GI\Services\ApiKeyService;
 use GI\Services\PlanService;
+use GI\Services\ArticleService;
 
 class DashboardController
 {
@@ -24,6 +25,9 @@ class DashboardController
         $apiKeys       = [];
         $transactions  = [];
         $products      = [];
+        $recentArticles = [];
+        $creditUsageTrend = [];
+        $creditUsageTrendCaption = '';
 
         if (!empty($orgId)) {
             try {
@@ -41,6 +45,26 @@ class DashboardController
             } catch (\Exception $e) {
                 // Database/driver may be unavailable in local UI-only setups.
             }
+
+            try {
+                $trend = (new CreditService())->getUsageTrendLastDays($orgId, 7);
+                $creditUsageTrend = $trend['points'];
+                $creditUsageTrendCaption = $trend['caption'];
+            } catch (\Throwable $e) {
+                $trend = (new CreditService())->getUsageTrendLastDays('', 7);
+                $creditUsageTrend = $trend['points'];
+                $creditUsageTrendCaption = 'Credit trend unavailable.';
+            }
+        } else {
+            $trend = (new CreditService())->getUsageTrendLastDays('', 7);
+            $creditUsageTrend = $trend['points'];
+            $creditUsageTrendCaption = $trend['caption'];
+        }
+
+        try {
+            $recentArticles = (new ArticleService())->getPublishedRecent(4);
+        } catch (\Throwable $e) {
+            $recentArticles = [];
         }
 
         View::render('dashboard/index', [
@@ -50,6 +74,9 @@ class DashboardController
             'apiKeyCount'   => count($apiKeys),
             'transactions'  => $transactions,
             'products'      => $products,
+            'recentArticles' => $recentArticles,
+            'creditUsageTrend' => $creditUsageTrend,
+            'creditUsageTrendCaption' => $creditUsageTrendCaption,
         ]);
     }
 }

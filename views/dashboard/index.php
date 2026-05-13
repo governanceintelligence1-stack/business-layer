@@ -792,34 +792,23 @@ tbody tr:hover {
         <h3 class="card-title" style="font-size: 0.95rem;">Updates</h3>
       </div>
       <div class="action-list">
-        <a class="btn btn-ghost action-item" href="/updates#gi-toolkit-launch">
+        <?php
+        $recentArticles = is_array($recentArticles ?? null) ? $recentArticles : [];
+        foreach ($recentArticles as $article):
+          $aid = htmlspecialchars((string)($article['id'] ?? ''));
+          $title = htmlspecialchars((string)($article['title'] ?? ''));
+        ?>
+        <a class="btn btn-ghost action-item" href="/updates#<?= $aid ?>">
           <span class="action-left">
             <span class="action-text">
-              <span class="action-title">GI-Toolkit Launch</span>
+              <span class="action-title"><?= $title ?></span>
             </span>
           </span>
         </a>
-        <a class="btn btn-ghost action-item" href="/updates#register-onboarding">
-          <span class="action-left">
-            <span class="action-text">
-              <span class="action-title">2-Step Registration Onboarding</span>
-            </span>
-          </span>
-        </a>
-        <a class="btn btn-ghost action-item" href="/updates#dashboard-download-actions">
-          <span class="action-left">
-            <span class="action-text">
-              <span class="action-title">Dashboard Product Download Actions</span>
-            </span>
-          </span>
-        </a>
-        <a class="btn btn-ghost action-item" href="/updates#billing-credit-refresh">
-          <span class="action-left">
-            <span class="action-text">
-              <span class="action-title">Billing & Credit UI Refresh</span>
-            </span>
-          </span>
-        </a>
+        <?php endforeach; ?>
+        <?php if (empty($recentArticles)): ?>
+        <p style="font-size: 0.8rem; color: var(--muted-foreground); margin: 0;">No published updates yet.</p>
+        <?php endif; ?>
       </div>
       <div style="margin-top: auto; padding-top: 0.9rem;">
         <a href="/updates" style="font-size: 0.75rem; color: var(--primary); font-weight: 600; text-decoration: none; display: block; text-align: right;">
@@ -903,7 +892,7 @@ tbody tr:hover {
         <h3 class="card-title" style="font-size: 0.95rem;">Quick Actions</h3>
       </div>
       <div class="action-list">
-        <a href="/training" class="btn btn-ghost action-item">
+        <a href="/credits" class="btn btn-ghost action-item">
           <span class="action-left">
             <span class="action-text">
               <span class="action-title">Credit Usage</span>

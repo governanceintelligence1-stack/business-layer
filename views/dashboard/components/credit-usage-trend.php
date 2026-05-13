@@ -1,15 +1,6 @@
 <?php
-$usageData = !empty($creditUsageTrend ?? [])
-  ? $creditUsageTrend
-  : [
-      ['label' => 'Mon', 'val' => 1000],
-      ['label' => 'Tue', 'val' => 1170],
-      ['label' => 'Wed', 'val' => 660],
-      ['label' => 'Thu', 'val' => 1030],
-      ['label' => 'Fri', 'val' => 1240],
-      ['label' => 'Sat', 'val' => 980],
-      ['label' => 'Sun', 'val' => 1320],
-    ];
+$usageData = is_array($creditUsageTrend ?? null) ? $creditUsageTrend : [];
+$trendCaption = (string) ($creditUsageTrendCaption ?? '');
 
 $chartRows = [];
 foreach ($usageData as $row) {
@@ -48,7 +39,9 @@ $chartId = 'credit_usage_curve_chart';
     <h3 class="card-title" style="font-size: 0.95rem;">Credit Usage Trend</h3>
   </div>
   <div id="<?= $chartId ?>" style="width: 100%; height: 220px;"></div>
-  <div style="font-size: 0.75rem; color: var(--success); font-weight: 600; margin-top: 0.35rem;">+12.5% trend</div>
+  <?php if ($trendCaption !== '') : ?>
+  <div style="font-size: 0.75rem; color: var(--muted-foreground); font-weight: 600; margin-top: 0.35rem;"><?= htmlspecialchars($trendCaption, ENT_QUOTES, 'UTF-8') ?></div>
+  <?php endif; ?>
 </div>
 
 <script src="https://www.gstatic.com/charts/loader.js"></script>

@@ -498,7 +498,24 @@ class CheckoutController
 
     public function notify(): void
     {
-        $payload = $_POST ?: [];
+        $payload = $_POST;
+        if ($payload === [] && strtoupper((string) ($_SERVER['REQUEST_METHOD'] ?? '')) === 'POST') {
+            $raw = file_get_contents('php://input');
+            if (is_string($raw) && $raw !== '') {
+                parse_str($raw, $parsed);
+                $payload = is_array($parsed) ? $parsed : [];
+            }
+        }
+
+        $cfgMid = trim((string) ($_ENV['PAYFAST_MERCHANT_ID'] ?? ''));
+        $gotMid = trim((string) ($payload['merchant_id'] ?? ''));
+        if ($cfgMid !== '' && $gotMid !== '' && $gotMid !== $cfgMid) {
+            error_log('checkout/notify: merchant_id mismatch');
+            http_response_code(400);
+            echo 'Invalid merchant_id';
+            return;
+        }
+
         $this->appendNotifyLog($payload);
 
         $skipSignature = filter_var(
@@ -509,6 +526,12 @@ class CheckoutController
         );
         $payfast = new PayFastService();
         if (!$skipSignature && !$payfast->isValidSignature($payload)) {
+            $hasPass = trim((string) ($_ENV['PAYFAST_PASSPHRASE'] ?? '')) !== '';
+            error_log(
+                'checkout/notify: invalid PayFast ITN signature (PAYFAST_PASSPHRASE '
+                . ($hasPass ? 'is set — verify it matches the PayFast dashboard' : 'is empty — set it if a passphrase is configured on PayFast')
+                . ')'
+            );
             http_response_code(400);
             echo 'Invalid signature';
             return;

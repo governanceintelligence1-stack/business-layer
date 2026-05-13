@@ -58,38 +58,7 @@
   }
 </style>
 
-<?php
-$articles = [
-    [
-        'id' => 'gi-toolkit-launch',
-        'title' => 'GI-Toolkit Launch',
-        'date' => 'May 2026',
-        'summary' => 'The GI-Toolkit was introduced for enterprise downloads and quick deployment workflows.',
-        'body' => 'This update introduces a centralized toolkit package that supports faster onboarding and team-wide rollout. It consolidates utilities into one delivery point and reduces setup complexity.',
-    ],
-    [
-        'id' => 'register-onboarding',
-        'title' => '2-Step Registration Onboarding',
-        'date' => 'May 2026',
-        'summary' => 'Registration was simplified into a two-part experience for faster completion.',
-        'body' => 'Personal details and organization details were split into guided steps. The form is now componentized and tuned for non-scrolling completion.',
-    ],
-    [
-        'id' => 'dashboard-download-actions',
-        'title' => 'Dashboard Product Download Actions',
-        'date' => 'May 2026',
-        'summary' => 'Dashboard actions now include direct product download flows.',
-        'body' => 'The dashboard now presents product-related action points and transaction context with tokens consumed and product details for each activity.',
-    ],
-    [
-        'id' => 'billing-credit-refresh',
-        'title' => 'Billing & Credit UI Refresh',
-        'date' => 'May 2026',
-        'summary' => 'Billing and credit cards were refreshed for better readability and hierarchy.',
-        'body' => 'The update improves card spacing, link placement, and trend visibility while preserving existing routing and account behavior.',
-    ],
-];
-?>
+<?php $articles = is_array($articles ?? null) ? $articles : []; ?>
 
 <div class="updates-shell">
   <section class="updates-main">
@@ -106,12 +75,19 @@ $articles = [
       </div>
     </div>
 
+    <?php if (empty($articles)): ?>
+      <article class="card updates-article">
+        <h3>No updates published yet</h3>
+        <div class="updates-meta">Please check back later.</div>
+      </article>
+    <?php endif; ?>
+
     <?php foreach ($articles as $article): ?>
       <article class="card updates-article" id="<?= htmlspecialchars($article['id']) ?>" data-article-card data-title="<?= htmlspecialchars($article['title']) ?>">
         <h3><?= htmlspecialchars($article['title']) ?></h3>
-        <div class="updates-meta"><?= htmlspecialchars($article['date']) ?></div>
+        <div class="updates-meta"><?= htmlspecialchars((string)($article['article_date'] ?? '')) ?></div>
         <p><strong>Title:</strong> <?= htmlspecialchars($article['title']) ?></p>
-        <p><?= htmlspecialchars($article['body']) ?></p>
+        <p><?= htmlspecialchars((string)($article['body'] ?? $article['summary'] ?? '')) ?></p>
       </article>
     <?php endforeach; ?>
   </section>
