@@ -47,6 +47,15 @@ $userId = $user && !empty($user['id']) ? (string) $user['id'] : '';
 $ref = 'PF-SIM-' . date('YmdHis') . '-' . strtoupper(substr(bin2hex(random_bytes(4)), 0, 8));
 
 $txSvc = new PaymentTransactionService();
+$billing = new \GI\Services\BillingService();
+$invoiceId = $billing->createInvoice($orgId, [[
+    'description' => (string) ($plan['name'] ?? 'Plan') . ' — monthly (simulated ITN)',
+    'quantity' => 1,
+    'unit_price' => $amount,
+    'tax_rate' => 0,
+    'line_total' => $amount,
+]]);
+
 $txSvc->createPending(
     $orgId,
     $userId,
@@ -59,7 +68,8 @@ $txSvc->createPending(
         'plan_name' => (string) ($plan['name'] ?? 'Plan'),
         'requested_plan_id' => $planId,
         'is_mock_plan' => false,
-    ]
+    ],
+    $invoiceId
 );
 
 echo "Created pending payment merchant_reference={$ref} amount={$amount} plan={$plan['slug']}\n";

@@ -3,17 +3,18 @@ declare(strict_types=1);
 
 namespace GI\Controllers;
 
+use GI\Core\DB;
 use GI\Core\Middleware;
 use GI\Core\Session;
 use GI\Core\View;
-use GI\Core\DB;
 use GI\Services\BillingService;
+use GI\Services\CreditService;
+use GI\Services\PaymentMethodService;
+use GI\Services\PaymentTransactionService;
 use GI\Services\PayFastService;
 use GI\Services\PlanService;
-use GI\Services\PaymentTransactionService;
-use GI\Services\PaymentMethodService;
 use GI\Services\SubscriptionService;
-use GI\Services\CreditService;
+use InvalidArgumentException;
 
 class CheckoutController
 {
@@ -345,39 +346,154 @@ class CheckoutController
 
         $amount = (float) ($plan['price_monthly'] ?? 0);
         if ($billingCycle === 'annual') {
-            $amount = (float) (($plan['price_monthly'] ?? 0) * 12);
+            $annual = (float) ($plan['price_annual'] ?? 0);
+            $amount = $annual > 0 ? $annual : $amount * 12;
         }
         error_log("[{$dbgId}] billing_cycle={$billingCycle}, amount={$amount}");
 
         $persistedPlanId = (!empty($plan['_is_mock']) ? '' : (string)($plan['id'] ?? ''));
-        $providerRef = $this->generateManualPaymentId();
-        error_log("[{$dbgId}] creating payment transaction provider_ref={$providerRef}, persisted_plan_id=" . ($persistedPlanId !== '' ? $persistedPlanId : 'NULL'));
+        error_log("[{$dbgId}] creating invoice + payment transaction persisted_plan_id=" . ($persistedPlanId !== '' ? $persistedPlanId : 'NULL'));
+
+        $invoiceNumber = 'INV-' . date('YmdHis') . '-' . strtoupper(bin2hex(random_bytes(3)));
+        $merchantReference = 'PF-' . date('YmdHis') . '-' . strtoupper(bin2hex(random_bytes(4)));
+        $lineDescription = $planName . ' Plan - ' . ucfirst($billingCycle) . ' Subscription';
+        $amountFormatted = number_format($amount, 2, '.', '');
+
+        $pdo = DB::getInstance()->getPdo();
+        $pdo->beginTransaction();
+
         try {
-            $txService = new PaymentTransactionService();
-            $txService->createPending(
-                $orgId,
-                (string)($user['id'] ?? ''),
-                $persistedPlanId,
-                $paymentMethodId,
-                $providerRef,
-                $amount,
-                [
-                    'billing_cycle' => $billingCycle,
-                    'plan_name' => $planName,
-                    'requested_plan_id' => $planId,
-                    'is_mock_plan' => !empty($plan['_is_mock']),
-                    'payment_method_id' => $paymentMethodId,
-                ]
-            );
-        } catch (\Exception $e) {
-            if (!$this->isAuthBypassed()) {
-                throw $e;
+            $stmt = $pdo->prepare("\n                INSERT INTO billing_invoices (
+                    organisation_id,
+                    invoice_number,
+                    status,
+                    currency,
+                    subtotal,
+                    tax_amount,
+                    total,
+                    amount_paid,
+                    amount_due,
+                    due_date,
+                    issued_at,
+                    created_at,
+                    updated_at
+                )
+                VALUES (
+                    :organisation_id,
+                    :invoice_number,
+                    'issued',
+                    'ZAR',
+                    :amount,
+                    0,
+                    :amount,
+                    0,
+                    :amount,
+                    current_date + interval '7 days',
+                    now(),
+                    now(),
+                    now()
+                )
+                RETURNING id
+            ");
+            $stmt->execute([
+                'organisation_id' => $orgId,
+                'invoice_number'  => $invoiceNumber,
+                'amount'          => $amount,
+            ]);
+            $invoiceId = (string) $stmt->fetchColumn();
+            if ($invoiceId === '') {
+                throw new \RuntimeException('Failed to create billing invoice.');
             }
-            error_log("[{$dbgId}] createPending failed in AUTH_BYPASS mode: " . $e->getMessage());
+
+            $stmt = $pdo->prepare("\n                INSERT INTO billing_line_items (
+                    invoice_id,
+                    description,
+                    quantity,
+                    unit_price,
+                    tax_rate,
+                    line_total,
+                    metadata
+                )
+                VALUES (
+                    :invoice_id,
+                    :description,
+                    1,
+                    :unit_price,
+                    0,
+                    :line_total,
+                    :metadata::jsonb
+                )
+            ");
+            $stmt->execute([
+                'invoice_id'  => $invoiceId,
+                'description' => $lineDescription,
+                'unit_price'  => $amountFormatted,
+                'line_total'  => $amountFormatted,
+                'metadata'    => json_encode([
+                    'plan_id' => $plan['id'] ?? null,
+                    'plan_slug' => $plan['slug'] ?? null,
+                    'billing_cycle' => $billingCycle,
+                    'credits_monthly' => $plan['credits_monthly'] ?? null,
+                ]),
+            ]);
+
+            $stmt = $pdo->prepare("\n                INSERT INTO payment_transactions (
+                    organisation_id,
+                    invoice_id,
+                    payment_method_id,
+                    provider,
+                    merchant_reference,
+                    idempotency_key,
+                    amount,
+                    currency,
+                    status,
+                    raw_response
+                )
+                VALUES (
+                    :organisation_id,
+                    :invoice_id,
+                    :payment_method_id,
+                    'payfast',
+                    :merchant_reference,
+                    :merchant_reference,
+                    :amount,
+                    'ZAR',
+                    'initiated',
+                    :raw_response::jsonb
+                )
+                RETURNING id
+            ");
+            $stmt->execute([
+                'organisation_id'   => $orgId,
+                'invoice_id'        => $invoiceId,
+                'payment_method_id' => $paymentMethodId,
+                'merchant_reference' => $merchantReference,
+                'amount'            => $amountFormatted,
+                'raw_response'      => json_encode([
+                    'user_id'        => $user['id'] ?? null,
+                    'plan_id'        => $plan['id'] ?? null,
+                    'requested_plan_id' => $planId,
+                    'billing_cycle'  => $billingCycle,
+                    'payment_method_id' => $paymentMethodId,
+                    'invoice_id'     => $invoiceId,
+                ], JSON_UNESCAPED_SLASHES),
+            ]);
+            $paymentTransactionId = (string) $stmt->fetchColumn();
+            if ($paymentTransactionId === '') {
+                throw new \RuntimeException('Failed to create payment transaction.');
+            }
+
+            $pdo->commit();
+        } catch (\Throwable $e) {
+            if ($pdo->inTransaction()) {
+                $pdo->rollBack();
+            }
+            throw $e;
         }
+
         $this->saveJsonPayment([
-            'provider_ref' => $providerRef,
-            'status' => 'pending',
+            'provider_ref' => $merchantReference,
+            'status' => 'initiated',
             'provider' => 'payfast',
             'organisation_id' => $orgId,
             'user_id' => (string)($user['id'] ?? ''),
@@ -385,15 +501,25 @@ class CheckoutController
             'requested_plan_id' => $planId,
             'plan_name' => $planName,
             'billing_cycle' => $billingCycle,
-            'amount' => number_format($amount, 2, '.', ''),
+            'amount' => $amountFormatted,
             'currency' => 'ZAR',
+            'invoice_id' => $invoiceId,
+            'payment_transaction_id' => $paymentTransactionId,
         ]);
-        error_log("[{$dbgId}] payment transaction created");
+        error_log("[{$dbgId}] checkout created invoice_id={$invoiceId} payment_transaction_id={$paymentTransactionId} merchant_reference={$merchantReference}");
 
-        $payfast = new PayFastService();
+        try {
+            $payfast = PayFastService::fromEnv();
+        } catch (InvalidArgumentException $e) {
+            error_log("[{$dbgId}] PayFast not configured: " . $e->getMessage());
+            Session::flash('error', 'PayFast merchant credentials are not configured. Set PAYFAST_MERCHANT_ID and PAYFAST_MERCHANT_KEY in the environment.');
+            header('Location: /checkout?plan_id=' . urlencode((string) $planId));
+            exit;
+        }
+
         $paymentData = $payfast->buildPaymentData([
-            'm_payment_id'   => $providerRef,
-            'amount'         => number_format($amount, 2, '.', ''),
+            'm_payment_id'   => $merchantReference,
+            'amount'         => $amountFormatted,
             'item_name'      => $planName,
             'item_description' => 'Plan checkout for ' . $planName,
             'name_first'     => (string)($user['first_name'] ?? ''),
@@ -402,7 +528,10 @@ class CheckoutController
             'custom_str1'    => $orgId,
             'custom_str2'    => $planId,
             'custom_str3'    => $billingCycle,
+            'custom_str4'    => $invoiceId,
+            'custom_str5'    => $paymentTransactionId,
         ]);
+        error_log("[{$dbgId}] payfast payload m_payment_id={$merchantReference} custom_str4={$invoiceId} custom_str5={$paymentTransactionId}");
         error_log("[{$dbgId}] payfast payload prepared for merchant_id=" . ($paymentData['merchant_id'] ?? 'EMPTY'));
 
         $gatewayUrl = $payfast->getProcessUrl();
@@ -419,22 +548,19 @@ class CheckoutController
 
     public function return(): void
     {
-        Middleware::auth();
-        $providerRef = trim((string)($_GET['m_payment_id'] ?? $_GET['custom_str4'] ?? ''));
+        $providerRef = trim((string) ($_GET['m_payment_id'] ?? $_GET['custom_str4'] ?? ''));
+        $pfStatus = strtoupper(trim((string) ($_GET['payment_status'] ?? '')));
         $user = Session::get('user');
 
-        $status = 'pending';
-        $message = 'Payment received and pending confirmation. Please refresh shortly.';
-
         if ($providerRef === '') {
-            $fallback = $this->findLatestJsonPaymentForUser((string)($user['id'] ?? ''));
+            $fallback = $this->findLatestJsonPaymentForUser((string) ($user['id'] ?? ''));
             if (!empty($fallback['provider_ref'])) {
-                $providerRef = (string)$fallback['provider_ref'];
+                $providerRef = (string) $fallback['provider_ref'];
             }
         }
 
+        $tx = [];
         if ($providerRef !== '') {
-            $tx = [];
             try {
                 $txService = new PaymentTransactionService();
                 $row = $txService->findByProviderRef($providerRef);
@@ -447,35 +573,78 @@ class CheckoutController
             if ($tx === []) {
                 $tx = $this->getJsonPayment($providerRef);
             }
-
-            if ($tx !== []) {
-                $status = (string)($tx['status'] ?? 'pending');
-                if (in_array($status, ['successful', 'paid', 'complete'], true)) {
-                    $message = 'Your payment is marked successful.';
-                } elseif (in_array($status, ['failed', 'cancelled'], true)) {
-                    $message = 'Payment is not successful. You can retry from plans.';
-                } else {
-                    $message = 'Payment received and pending confirmation. Please refresh shortly.';
-                }
-            } else {
-                $status = 'unknown';
-                $message = 'Payment reference not found. Please contact support if this persists.';
-            }
-        } else {
-            $status = 'pending';
-            $message = 'Payment return received. Confirmation may still be processing.';
         }
+
+        $dbStatus = $tx !== [] ? strtolower((string) ($tx['status'] ?? 'pending')) : '';
+        $dbSuccessful = in_array($dbStatus, ['successful', 'paid', 'complete'], true);
+        $dbFailed = $dbStatus === 'failed';
+        $dbCancelled = $dbStatus === 'cancelled';
+
+        $outcome = 'pending';
+        $message = 'Payment received and pending confirmation. Please refresh shortly.';
+        $status = $dbStatus !== '' ? $dbStatus : 'pending';
+
+        if ($dbSuccessful) {
+            $outcome = 'success';
+            $message = 'Your payment is confirmed and your subscription is active.';
+            $status = 'paid';
+        } elseif (in_array($pfStatus, ['FAILED', 'FAILURE'], true)) {
+            $outcome = 'failed';
+            $message = 'PayFast reported this payment as failed. You can try again from Plans.';
+            $status = 'failed';
+        } elseif (in_array($pfStatus, ['CANCELLED', 'CANCELLED_BY_USER', 'CANCELLED_BY_MERCHANT'], true)) {
+            $outcome = 'cancelled';
+            $message = 'This payment was cancelled before completion.';
+            $status = 'cancelled';
+        } elseif ($pfStatus === 'COMPLETE') {
+            $outcome = 'pending';
+            $message = 'Your payment completed on PayFast. We are still confirming it — Billing will update in a moment.';
+            $status = 'pending';
+        } elseif ($pfStatus === 'PENDING') {
+            $outcome = 'pending';
+            $message = 'PayFast is still processing this payment. Check Billing shortly.';
+            $status = 'pending';
+        } elseif ($providerRef !== '' && $tx !== []) {
+            if ($dbFailed) {
+                $outcome = 'failed';
+                $message = 'Payment did not complete successfully. You can retry from Plans.';
+            } elseif ($dbCancelled) {
+                $outcome = 'cancelled';
+                $message = 'This payment was cancelled.';
+            } else {
+                $outcome = 'pending';
+                $message = 'Payment received and pending confirmation. Please refresh shortly.';
+            }
+        } elseif ($providerRef !== '' && $tx === []) {
+            $outcome = 'unknown';
+            $message = 'Payment reference not found. Please contact support if this persists.';
+            $status = 'unknown';
+        } else {
+            $outcome = 'pending';
+            $message = 'Payment return received. Confirmation may still be processing.';
+            $status = 'pending';
+        }
+
+        $pageTitle = match ($outcome) {
+            'success' => 'Payment Successful',
+            'failed' => 'Payment Failed',
+            'cancelled' => 'Payment Cancelled',
+            'unknown' => 'Payment Status',
+            default => 'Payment Pending',
+        };
 
         View::render('checkout/return', [
             'user' => $user,
+            'outcome' => $outcome,
             'status' => $status,
             'message' => $message,
+            'pageTitle' => $pageTitle,
+            'providerRef' => $providerRef,
         ]);
     }
 
     public function cancel(): void
     {
-        Middleware::auth();
         $user = Session::get('user');
         $providerRef = trim((string)($_GET['m_payment_id'] ?? ''));
         if ($providerRef !== '') {
@@ -483,7 +652,7 @@ class CheckoutController
             try {
                 $txService = new PaymentTransactionService();
                 $tx = $txService->findByProviderRef($providerRef);
-                if (is_array($tx) && !empty($tx['id'])) {
+                if (is_array($tx) && !empty($tx['id']) && in_array($tx['status'] ?? '', ['initiated', 'pending'], true)) {
                     $txService->markCancelled((string)$tx['id'], ['cancelled_by' => 'user']);
                 }
             } catch (\Exception $e) {
@@ -498,25 +667,42 @@ class CheckoutController
 
     public function notify(): void
     {
-        $payload = $_POST;
-        if ($payload === [] && strtoupper((string) ($_SERVER['REQUEST_METHOD'] ?? '')) === 'POST') {
-            $raw = file_get_contents('php://input');
-            if (is_string($raw) && $raw !== '') {
-                parse_str($raw, $parsed);
-                $payload = is_array($parsed) ? $parsed : [];
+        header('Content-Type: text/plain; charset=UTF-8');
+
+        $rawBody = (string) ($GLOBALS['GI_PAYFAST_RAW_POST'] ?? '');
+        unset($GLOBALS['GI_PAYFAST_RAW_POST']);
+        if ($rawBody === '') {
+            $rawBody = file_get_contents('php://input') ?: '';
+        }
+        if ($rawBody === '' && strtoupper((string) ($_SERVER['REQUEST_METHOD'] ?? '')) === 'POST' && !empty($_POST)) {
+            $rawBody = http_build_query($_POST);
+        }
+
+        file_put_contents(
+            BASE_PATH . '/storage/payfast-itn.log',
+            date('c') . "\n" . $rawBody . "\n\n",
+            FILE_APPEND
+        );
+
+        $parsed = payfast_parse_raw_post($rawBody);
+        if ($parsed === [] && !empty($_POST)) {
+            foreach ($_POST as $k => $v) {
+                if (!is_string($k)) {
+                    continue;
+                }
+                $parsed[$k] = is_scalar($v) || $v === null ? (string) $v : '';
             }
         }
 
-        $cfgMid = trim((string) ($_ENV['PAYFAST_MERCHANT_ID'] ?? ''));
-        $gotMid = trim((string) ($payload['merchant_id'] ?? ''));
-        if ($cfgMid !== '' && $gotMid !== '' && $gotMid !== $cfgMid) {
-            error_log('checkout/notify: merchant_id mismatch');
-            http_response_code(400);
-            echo 'Invalid merchant_id';
-            return;
-        }
+        $this->appendNotifyLog($parsed);
 
-        $this->appendNotifyLog($payload);
+        $stringPayload = [];
+        foreach ($parsed as $k => $v) {
+            if (!is_string($k)) {
+                continue;
+            }
+            $stringPayload[$k] = $v === null ? '' : (string) $v;
+        }
 
         $skipSignature = filter_var(
             getenv('PAYFAST_NOTIFY_SKIP_SIGNATURE') !== false
@@ -524,120 +710,228 @@ class CheckoutController
                 : ($_ENV['PAYFAST_NOTIFY_SKIP_SIGNATURE'] ?? ''),
             FILTER_VALIDATE_BOOLEAN
         );
-        $payfast = new PayFastService();
-        if (!$skipSignature && !$payfast->isValidSignature($payload)) {
-            $hasPass = trim((string) ($_ENV['PAYFAST_PASSPHRASE'] ?? '')) !== '';
-            error_log(
-                'checkout/notify: invalid PayFast ITN signature (PAYFAST_PASSPHRASE '
-                . ($hasPass ? 'is set — verify it matches the PayFast dashboard' : 'is empty — set it if a passphrase is configured on PayFast')
-                . ')'
-            );
-            http_response_code(400);
-            echo 'Invalid signature';
-            return;
+
+        if (!$skipSignature) {
+            $payfast = PayFastService::tryFromEnv();
+            if ($payfast === null) {
+                error_log('checkout/notify: PayFast merchant credentials missing');
+                http_response_code(503);
+                echo 'PayFast not configured';
+
+                return;
+            }
+
+            $remoteAddr = (string) ($_SERVER['REMOTE_ADDR'] ?? '0.0.0.0');
+            $providerRefEarly = trim((string) ($stringPayload['m_payment_id'] ?? ''));
+            $expectedAmount = null;
+            if ($providerRefEarly !== '') {
+                try {
+                    $txEarly = (new PaymentTransactionService())->findByProviderRef($providerRefEarly);
+                    if (is_array($txEarly) && array_key_exists('amount', $txEarly)) {
+                        $expectedAmount = number_format((float) $txEarly['amount'], 2, '.', '');
+                    }
+                } catch (\Throwable $e) {
+                    // amount check skipped
+                }
+            }
+
+            $rawForSig = $rawBody !== '' ? $rawBody : null;
+            if (!$payfast->validateItn($stringPayload, $remoteAddr, $expectedAmount, $rawForSig)) {
+                http_response_code(400);
+                echo 'ITN validation failed';
+
+                return;
+            }
         }
 
-        $providerRef = trim((string)($payload['m_payment_id'] ?? ''));
-        $paymentStatus = strtolower((string)($payload['payment_status'] ?? ''));
+        $providerRef = trim((string) ($parsed['m_payment_id'] ?? ''));
+        $paymentStatus = strtolower((string) ($parsed['payment_status'] ?? ''));
         if ($providerRef !== '') {
             $status = $paymentStatus !== '' ? $paymentStatus : 'notified';
-            $this->updateJsonPaymentStatus($providerRef, $status, $payload);
+            $this->updateJsonPaymentStatus($providerRef, $status, $parsed);
         }
 
         if ($providerRef === '') {
             http_response_code(200);
             echo 'OK';
-            return;
-        }
 
-        if (!in_array($paymentStatus, ['complete', 'completed'], true)) {
-            http_response_code(200);
-            echo 'OK';
-            return;
-        }
-
-        $txService = new PaymentTransactionService();
-        $tx = $txService->findByProviderRef($providerRef);
-        if (!$tx || empty($tx['id'])) {
-            http_response_code(200);
-            echo 'OK';
-            return;
-        }
-
-        if (($tx['status'] ?? '') === 'successful') {
-            http_response_code(200);
-            echo 'OK';
             return;
         }
 
         try {
-            $invoiceId = $this->activateFromPayment($tx);
-            if ($invoiceId !== null && $invoiceId !== '') {
-                $txService->markSuccessfulWithItn((string) $tx['id'], $payload, $invoiceId);
+            $code = $this->processPayfastItnInDatabase($stringPayload, $parsed);
+            http_response_code($code);
+            if ($code === 400) {
+                echo 'Invalid amount';
+            } else {
+                echo 'OK';
             }
         } catch (\Throwable $e) {
-            error_log('checkout/notify activation failed: ' . $e->getMessage());
+            error_log('checkout/notify failed: ' . $e->getMessage());
             http_response_code(500);
-            echo 'Activation failed';
-            return;
+            echo 'ITN error';
         }
-
-        http_response_code(200);
-        echo 'OK';
     }
 
     /**
-     * Creates subscription, paid invoice, and credit grant. Returns invoice id or null if nothing to do.
+     * Single DB transaction: validate amount, mark payment outcome, activate subscription, grant credits.
+     * Credits and subscription changes must only run here (not on return_url).
+     *
+     * @param array<string, string> $stringPayload
+     * @param array<string, string> $parsedPayload
      */
-    private function activateFromPayment(array $tx): ?string
+    private function processPayfastItnInDatabase(array $stringPayload, array $parsedPayload): int
     {
-        $orgId = (string)($tx['organisation_id'] ?? '');
-        $payloadData = $this->decodeTxPayload($tx['raw_response'] ?? ($tx['raw_payload'] ?? null));
-        $planId = (string)($payloadData['plan_id'] ?? '');
-        $payload = isset($payloadData['payload']) && is_array($payloadData['payload'])
-            ? $payloadData['payload']
-            : $payloadData;
-        if ($planId === '') {
-            $planId = $this->resolvePlanIdForMockPayment($payload);
-        }
-        if ($orgId === '' || $planId === '') {
-            return null;
+        $merchantRef = trim((string) ($parsedPayload['m_payment_id'] ?? ''));
+        if ($merchantRef === '') {
+            return 200;
         }
 
+        $paymentStatus = strtolower((string) ($parsedPayload['payment_status'] ?? ''));
+
+        $earlyTx = (new PaymentTransactionService())->findByProviderRef($merchantRef);
+        if (is_array($earlyTx) && !empty($earlyTx['organisation_id'])) {
+            (new CreditService())->getOrCreateAccount((string) $earlyTx['organisation_id']);
+        }
+
+        $pdo = DB::getInstance()->getPdo();
+        $pdo->beginTransaction();
+        $txSvc = new PaymentTransactionService();
+        try {
+            $stmt = $pdo->prepare("\n                SELECT
+                    pt.id AS payment_transaction_id,
+                    pt.invoice_id,
+                    pt.organisation_id,
+                    pt.amount,
+                    pt.status,
+                    bi.total,
+                    bi.credits_granted
+                FROM payment_transactions pt
+                JOIN billing_invoices bi ON bi.id = pt.invoice_id
+                WHERE pt.merchant_reference = :merchant_reference
+                FOR UPDATE\n            ");
+            $stmt->execute(['merchant_reference' => $merchantRef]);
+            $row = $stmt->fetch(\PDO::FETCH_ASSOC);
+            if (!$row || empty($row['payment_transaction_id'])) {
+                error_log('checkout/notify: payment transaction not found for merchant_reference=' . $merchantRef);
+                $pdo->rollBack();
+
+                return 200;
+            }
+            error_log('checkout/notify: matched merchant_reference=' . $merchantRef . ' invoice_id=' . ($row['invoice_id'] ?? 'NULL'));
+
+            if (($row['status'] ?? '') === 'successful') {
+                $pdo->commit();
+
+                return 200;
+            }
+
+            $expected = number_format((float) ($row['total'] ?? $row['amount'] ?? 0), 2, '.', '');
+            $grossRaw = $stringPayload['amount_gross'] ?? $parsedPayload['amount_gross'] ?? '0';
+            $received = number_format((float) $grossRaw, 2, '.', '');
+            if ($received !== $expected) {
+                $txSvc->markFailed((string) $row['payment_transaction_id'], $parsedPayload);
+                $pdo->commit();
+
+                return 400;
+            }
+
+            if (!in_array($paymentStatus, ['complete', 'completed'], true)) {
+                if (in_array($paymentStatus, ['failed', 'failure', 'cancelled', 'canceled'], true)) {
+                    $txSvc->markFailed((string) $row['id'], $parsedPayload);
+                }
+                $pdo->commit();
+
+                return 200;
+            }
+
+            $this->fulfillLockedPayfastItnRow($row, $stringPayload);
+            $pdo->commit();
+            error_log('checkout/notify: updated payment_transaction_id=' . ($row['payment_transaction_id'] ?? 'NULL') . ' and invoice_id=' . ($row['invoice_id'] ?? 'NULL'));
+
+            return 200;
+        } catch (\Throwable $e) {
+            if ($pdo->inTransaction()) {
+                $pdo->rollBack();
+            }
+            throw $e;
+        }
+    }
+
+    /**
+     * @param array<string, mixed> $lockedTx
+     * @param array<string, string> $itnPayload
+     */
+    private function fulfillLockedPayfastItnRow(array $lockedTx, array $itnPayload): void
+    {
+        $txSvc = new PaymentTransactionService();
+        $billingService = new BillingService();
         $subscriptionService = new SubscriptionService();
         $creditService = new CreditService();
-        $billingService = new BillingService();
         $planService = new PlanService();
 
-        $existing = $subscriptionService->getActive($orgId);
-        if ($existing) {
-            $subscriptionService->cancel((string)$existing['id']);
+        $orgId = (string) ($lockedTx['organisation_id'] ?? '');
+        $payloadData = $this->decodeTxPayload($lockedTx['raw_response'] ?? ($lockedTx['raw_payload'] ?? null));
+        $planId = (string) ($payloadData['plan_id'] ?? '');
+        $inner = isset($payloadData['payload']) && is_array($payloadData['payload'])
+            ? $payloadData['payload']
+            : $payloadData;
+        $itnPlan = trim((string) ($itnPayload['custom_str2'] ?? ''));
+        if ($itnPlan !== '') {
+            $planId = $itnPlan;
+        }
+        if ($planId === '') {
+            $planId = $this->resolvePlanIdForMockPayment($inner + ['requested_plan_id' => $itnPlan]);
+        }
+        if ($orgId === '' || $planId === '') {
+            throw new \RuntimeException('Missing organisation or plan for PayFast fulfillment.');
         }
 
-        $billingCycle = (string)($payload['billing_cycle'] ?? 'monthly');
+        $billingCycle = strtolower(trim((string) ($itnPayload['custom_str3'] ?? ($inner['billing_cycle'] ?? 'monthly'))));
         if (!in_array($billingCycle, ['monthly', 'annual'], true)) {
             $billingCycle = 'monthly';
         }
-        $subscriptionService->create($orgId, $planId, $billingCycle);
-        $plan = $planService->findById($planId);
-        $planName = (string)($plan['name'] ?? 'Plan');
-        $monthlyCredits = (float)($plan['credits_monthly'] ?? 0);
-        $amount = (float)($tx['amount'] ?? 0);
 
-        $invoiceId = $billingService->createInvoice($orgId, [[
-            'description' => $planName . ' subscription',
-            'quantity'    => 1,
-            'unit_price'  => $amount,
-            'tax_rate'    => 0,
-            'line_total'  => $amount,
-        ]]);
+        $existing = $subscriptionService->getActive($orgId);
+        if ($existing) {
+            $subscriptionService->cancel((string) $existing['id']);
+        }
+        $subscriptionService->create($orgId, $planId, $billingCycle);
+
+        $plan = $planService->findById($planId);
+        $planName = (string) ($plan['name'] ?? 'Plan');
+        $monthlyCredits = (float) ($plan['credits_monthly'] ?? 0);
+
+        $invoiceId = trim((string) ($lockedTx['invoice_id'] ?? ''));
+        if ($invoiceId === '') {
+            $amount = (float) ($lockedTx['amount'] ?? 0);
+            $invoiceId = $billingService->createInvoice($orgId, [[
+                'description' => $planName . ' subscription',
+                'quantity'    => 1,
+                'unit_price'  => $amount,
+                'tax_rate'    => 0,
+                'line_total'  => $amount,
+            ]]);
+        }
+
         $billingService->markPaid($invoiceId);
 
         if ($monthlyCredits > 0) {
-            $creditService->addCredits($orgId, $monthlyCredits, 'Plan activation credits', 'subscription', $planId);
+            $creditService->addCredits(
+                $orgId,
+                $monthlyCredits,
+                'Plan activation credits',
+                'subscription',
+                $planId,
+                null,
+                true
+            );
         }
 
-        return $invoiceId;
+        $billingService->markCreditsGrantedForInvoice($invoiceId, $monthlyCredits);
+
+        $txId = (string) ($lockedTx['payment_transaction_id'] ?? ($lockedTx['id'] ?? ''));
+        $txSvc->markSuccessfulWithItn($txId, $itnPayload, $invoiceId);
     }
 
     private function decodeTxPayload(mixed $rawPayload): array

@@ -72,7 +72,7 @@
           <div class="sidebar-user-role"><?= htmlspecialchars($userRole) ?></div>
         </div>
       </a>
-      <a href="/auth/logout" class="btn btn-sm w-100 sidebar-logout-btn"
+      <a href="/auth/logout" class="btn btn-primary w-100 sidebar-logout-btn"
          data-confirm="Are you sure you want to log out?">
         Log Out
       </a>

@@ -97,25 +97,25 @@ class BillingService
         $total = $subtotal + $taxAmount;
         $number = 'INV-' . strtoupper(substr(bin2hex(random_bytes(6)), 0, 10)) . '-' . date('Ymd');
 
-        $invoiceId = $this->db->insert('billing_invoices', [
-            ...array_filter([
-                'organisation_id' => $orgId,
-                'invoice_number'  => $number,
-                'amount_total'    => $this->hasInvoiceColumn('amount_total') ? $total : null,
-                'subtotal'        => $this->hasInvoiceColumn('subtotal') ? $subtotal : null,
-                'tax_amount'      => $this->hasInvoiceColumn('tax_amount') ? $taxAmount : null,
-                'total'           => $this->hasInvoiceColumn('total') ? $total : null,
-                'amount_paid'     => $this->hasInvoiceColumn('amount_paid') ? 0 : null,
-                'amount_due'      => $this->hasInvoiceColumn('amount_due') ? $total : null,
-                'currency'        => 'ZAR',
-                'status'          => $this->hasInvoiceColumn('status') ? ($this->hasInvoiceColumn('total') ? 'issued' : 'pending') : null,
-                'due_date'        => $this->hasInvoiceColumn('due_date') ? date('Y-m-d', strtotime('+30 days')) : null,
-                'issued_at'       => $this->hasInvoiceColumn('issued_at') ? date('Y-m-d H:i:s') : null,
-                'created_at'      => $this->hasInvoiceColumn('created_at') ? date('Y-m-d H:i:s') : null,
-                'updated_at'      => $this->hasInvoiceColumn('updated_at') ? date('Y-m-d H:i:s') : null,
-                'notes'           => $this->hasInvoiceColumn('notes') ? ($taxAmount > 0 ? ('Includes tax amount: ' . number_format($taxAmount, 2, '.', '')) : null) : null,
-            ], static fn($v) => $v !== null),
-        ]);
+        $data = array_filter([
+            'organisation_id' => $orgId,
+            'invoice_number'  => $number,
+            'amount_total'    => $this->hasInvoiceColumn('amount_total') ? $total : null,
+            'subtotal'        => $this->hasInvoiceColumn('subtotal') ? $subtotal : null,
+            'tax_amount'      => $this->hasInvoiceColumn('tax_amount') ? $taxAmount : null,
+            'total'           => $this->hasInvoiceColumn('total') ? $total : null,
+            'amount_paid'     => $this->hasInvoiceColumn('amount_paid') ? 0 : null,
+            'amount_due'      => $this->hasInvoiceColumn('amount_due') ? $total : null,
+            'currency'        => 'ZAR',
+            'status'          => $this->hasInvoiceColumn('status') ? ($this->hasInvoiceColumn('total') ? 'issued' : 'pending') : null,
+            'due_date'        => $this->hasInvoiceColumn('due_date') ? date('Y-m-d', strtotime('+30 days')) : null,
+            'issued_at'       => $this->hasInvoiceColumn('issued_at') ? date('Y-m-d H:i:s') : null,
+            'created_at'      => $this->hasInvoiceColumn('created_at') ? date('Y-m-d H:i:s') : null,
+            'updated_at'      => $this->hasInvoiceColumn('updated_at') ? date('Y-m-d H:i:s') : null,
+            'notes'           => $this->hasInvoiceColumn('notes') ? ($taxAmount > 0 ? ('Includes tax amount: ' . number_format($taxAmount, 2, '.', '')) : null) : null,
+        ], static fn($v) => $v !== null);
+
+        $invoiceId = $this->db->insert('billing_invoices', $data);
 
         foreach ($normalized as $item) {
             $insert = [
@@ -151,5 +151,28 @@ class BillingService
             'paid_at'     => $this->hasInvoiceColumn('paid_at') ? date('Y-m-d H:i:s') : null,
             'updated_at'  => $this->hasInvoiceColumn('updated_at') ? date('Y-m-d H:i:s') : null,
         ], static fn($v) => $v !== null), ['id' => $invoiceId]);
+    }
+
+    /**
+     * Marks subscription credits as allocated for this invoice (when columns exist).
+     */
+    public function markCreditsGrantedForInvoice(string $invoiceId, float $creditsAmount): void
+    {
+        if (!$this->hasInvoiceColumn('credits_granted')) {
+            return;
+        }
+
+        $data = [
+            'credits_granted' => true,
+            'updated_at'     => $this->hasInvoiceColumn('updated_at') ? date('Y-m-d H:i:s') : null,
+        ];
+        if ($this->hasInvoiceColumn('credits_granted_at')) {
+            $data['credits_granted_at'] = date('Y-m-d H:i:s');
+        }
+        if ($this->hasInvoiceColumn('credits_granted_amount')) {
+            $data['credits_granted_amount'] = $creditsAmount;
+        }
+
+        $this->db->update('billing_invoices', array_filter($data, static fn($v) => $v !== null), ['id' => $invoiceId]);
     }
 }

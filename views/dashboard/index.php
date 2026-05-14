@@ -676,30 +676,6 @@ tbody tr:hover {
     flex-direction: column;
   }
 
-  .sidebar,
-  .app-sidebar,
-  aside {
-    width: 100%;
-    min-height: auto;
-    border-right: 0 !important;
-    border-bottom: 1px solid var(--border) !important;
-  }
-
-  .sidebar-nav,
-  .nav-menu {
-    display: flex;
-    overflow-x: auto;
-    gap: 0.5rem;
-  }
-
-  .sidebar a,
-  .app-sidebar a,
-  aside a,
-  .nav-link,
-  .menu-link {
-    white-space: nowrap;
-  }
-
   .card-grid-2 {
     grid-template-columns: 1fr;
   }

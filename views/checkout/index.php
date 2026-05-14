@@ -213,8 +213,8 @@ if ($defaultMethodId === '' && !empty($paymentMethods[0]['id'])) {
       </div>
 
       <div class="checkout-actions">
-        <button type="submit" class="btn btn-primary checkout-payfast-btn">Continue to PayFast</button>
-        <a href="/plans" class="btn btn-secondary w-100">Back to Plans</a>
+        <a href="/plans" class="btn btn-secondary">Back to Plans</a>
+        <button type="submit" class="btn btn-primary">Continue to PayFast</button>
       </div>
     </section>
   </form>

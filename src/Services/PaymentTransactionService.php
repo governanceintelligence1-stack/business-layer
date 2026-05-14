@@ -21,19 +21,45 @@ class PaymentTransactionService
         ?string $paymentMethodId,
         string $providerRef,
         float $amount,
-        array $payload = []
+        array $payload = [],
+        ?string $invoiceId = null
     ): string {
-        return $this->db->insert('payment_transactions', [
+        $sql = "INSERT INTO payment_transactions (
+                    organisation_id,
+                    invoice_id,
+                    payment_method_id,
+                    provider,
+                    merchant_reference,
+                    idempotency_key,
+                    amount,
+                    currency,
+                    status,
+                    raw_response,
+                    created_at,
+                    updated_at
+                ) VALUES (
+                    :organisation_id,
+                    :invoice_id,
+                    :payment_method_id,
+                    'payfast',
+                    :merchant_reference,
+                    :idempotency_key,
+                    :amount,
+                    'ZAR',
+                    'initiated',
+                    :raw_response::jsonb,
+                    :created_at,
+                    :updated_at
+                ) RETURNING id";
+
+        $stmt = $this->db->getPdo()->prepare($sql);
+        $stmt->execute([
             'organisation_id'   => $orgId,
-            'invoice_id'        => null,
+            'invoice_id'        => $invoiceId,
             'payment_method_id' => $paymentMethodId,
-            'provider'          => 'payfast',
-            'provider_transaction_id' => null,
             'merchant_reference' => $providerRef,
             'idempotency_key'   => $providerRef,
             'amount'            => $amount,
-            'currency'          => 'ZAR',
-            'status'            => 'pending',
             'raw_response'      => json_encode([
                 'user_id' => $userId ?: null,
                 'plan_id' => $planId ?: null,
@@ -42,6 +68,20 @@ class PaymentTransactionService
             'created_at'        => date('Y-m-d H:i:s'),
             'updated_at'        => date('Y-m-d H:i:s'),
         ]);
+
+        $result = $stmt->fetch(\PDO::FETCH_ASSOC);
+        return $result ? (string)($result['id'] ?? '') : '';
+    }
+
+    /**
+     * Row lock for ITN idempotency (call inside an open transaction).
+     */
+    public function fetchByMerchantReferenceForUpdate(string $providerRef): array|false
+    {
+        return $this->db->fetch(
+            'SELECT * FROM payment_transactions WHERE merchant_reference = :ref FOR UPDATE',
+            ['ref' => $providerRef]
+        );
     }
 
     public function findByProviderRef(string $providerRef): array|false

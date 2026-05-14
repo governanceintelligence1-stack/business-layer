@@ -65,10 +65,19 @@ class CreditService
         string $description,
         string $refType = '',
         string $refId = '',
-        ?string $createdByUserId = null
+        ?string $createdByUserId = null,
+        bool $participateInOuterTransaction = false
     ): bool {
         $pdo = $this->db->getPdo();
-        $pdo->beginTransaction();
+        $ownsTransaction = !$participateInOuterTransaction;
+
+        if ($participateInOuterTransaction && !$pdo->inTransaction()) {
+            throw new \InvalidArgumentException('participateInOuterTransaction requires an active PDO transaction.');
+        }
+
+        if ($ownsTransaction) {
+            $pdo->beginTransaction();
+        }
 
         try {
             $account = $this->db->fetch(
@@ -76,9 +85,13 @@ class CreditService
                 ['org_id' => $orgId]
             );
             if (!$account) {
-                $pdo->rollBack();
+                if ($ownsTransaction) {
+                    $pdo->rollBack();
+                }
                 $this->getOrCreateAccount($orgId);
-                $pdo->beginTransaction();
+                if ($ownsTransaction) {
+                    $pdo->beginTransaction();
+                }
                 $account = $this->db->fetch(
                     'SELECT * FROM credit_accounts WHERE organisation_id = :org_id FOR UPDATE',
                     ['org_id' => $orgId]
@@ -114,10 +127,15 @@ class CreditService
                 $createdByUserId
             );
 
-            $pdo->commit();
+            if ($ownsTransaction) {
+                $pdo->commit();
+            }
+
             return true;
         } catch (\Exception $e) {
-            $pdo->rollBack();
+            if ($ownsTransaction) {
+                $pdo->rollBack();
+            }
             throw $e;
         }
     }

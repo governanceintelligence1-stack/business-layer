@@ -4,7 +4,8 @@
   "type": "project",
   "require": {
     "php": ">=8.0",
-    "vlucas/phpdotenv": "^5.5"
+    "vlucas/phpdotenv": "^5.5",
+    "psr/log": "^1.1"
   },
   "require-dev": {
     "phpunit/phpunit": "^10.0"
@@ -12,7 +13,10 @@
   "autoload": {
     "psr-4": {
       "GI\\": "src/"
-    }
+    },
+    "files": [
+      "config/payfast.php"
+    ]
   },
   "scripts": {
     "test": "phpunit"

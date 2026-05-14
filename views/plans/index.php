@@ -279,7 +279,7 @@
           <?php endforeach; ?>
         </ul>
 
-        <a href="/checkout?plan_id=<?= htmlspecialchars($plan['id']) ?>" class="btn btn-primary w-100" style="width: 100%;">
+        <a href="/checkout?plan_id=<?= htmlspecialchars($plan['id']) ?>" class="btn btn-primary w-100">
           <?= $isFeatured ? 'Get Started' : 'Select Plan' ?>
         </a>
       </div>

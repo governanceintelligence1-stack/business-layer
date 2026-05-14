@@ -1,0 +1,15 @@
+{
+    "provider_ref": "PF-20260514092424-F01628DB",
+    "status": "pending",
+    "provider": "payfast",
+    "organisation_id": "16145349-6f70-4b5e-9873-70107d2cecb8",
+    "user_id": "4643e849-286c-4058-8bff-69ad82514dd1",
+    "plan_id": "f4091b97-0336-43a0-974e-ee697544aa50",
+    "requested_plan_id": "f4091b97-0336-43a0-974e-ee697544aa50",
+    "plan_name": "Enterprise",
+    "billing_cycle": "monthly",
+    "amount": "5000.00",
+    "currency": "ZAR",
+    "updated_at": "2026-05-14T09:24:25+02:00",
+    "created_at": "2026-05-14T09:24:25+02:00"
+}

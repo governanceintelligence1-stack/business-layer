@@ -366,7 +366,7 @@ tr:hover td { background: var(--muted); }
       <?php endif; ?>
 
       <div style="margin-top: 1.5rem; display: flex; justify-content: space-between; align-items: center;">
-        <a href="/billing" class="btn">
+        <a href="/billing" class="btn btn-secondary">
           <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m15 18-6-6 6-6"/></svg>
           Back to Invoices
         </a>
@@ -426,7 +426,7 @@ tr:hover td { background: var(--muted); }
                       </span>
                     </td>
                     <td style="text-align:right;">
-                      <a href="/billing/invoice/<?= htmlspecialchars($inv['id']) ?>" class="btn btn-sm">View</a>
+                      <a href="/billing/invoice/<?= htmlspecialchars($inv['id']) ?>" class="btn btn-sm btn-ghost">View</a>
                     </td>
                   </tr>
                 <?php endforeach; ?>

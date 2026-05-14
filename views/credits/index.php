@@ -33,7 +33,7 @@ $usageListIncomplete = ($monthTotal > 0.00001) && ($listedMonthUsage + 0.0001 < 
     <h1 class="page-title">Credits</h1>
     <p class="page-subtitle">Manage your credit balance and transaction history.</p>
   </div>
-  <button class="btn btn-primary" data-modal-open="topup-modal"> Top Up Credits</button>
+  <button class="btn btn-primary" data-modal-open="topup-modal">Top Up Credits</button>
 </div>
 
 <!-- Balance Cards -->
