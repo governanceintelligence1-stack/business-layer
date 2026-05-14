@@ -134,7 +134,12 @@ function initTabs() {
 // ── Modal ─────────────────────────────────────────────────────────────────────
 function initModals() {
   document.querySelectorAll('[data-modal-open]').forEach(btn => {
-    btn.addEventListener('click', () => {
+    btn.addEventListener('click', (e) => {
+      // Prevent default navigation for anchor elements that open modals
+      if (e && typeof e.preventDefault === 'function') {
+        e.preventDefault();
+        e.stopPropagation();
+      }
       const id    = btn.getAttribute('data-modal-open');
       const modal = document.getElementById(id);
       if (modal) modal.classList.remove('hidden');

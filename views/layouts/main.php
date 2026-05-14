@@ -98,5 +98,21 @@ window.addEventListener('resize', () => {
   if (sidebarToggle) sidebarToggle.style.display = window.innerWidth <= 768 ? 'inline-flex' : 'none';
 });
 </script>
+<!-- Logout confirmation modal -->
+<div id="logout-confirm-modal" class="modal-overlay hidden">
+  <div class="modal" role="dialog" aria-modal="true" aria-labelledby="logout-modal-title">
+    <div class="modal-header">
+      <h2 id="logout-modal-title">Confirm sign out</h2>
+      <button class="modal-close" aria-label="Close">&times;</button>
+    </div>
+    <div style="margin-bottom:1rem; color:var(--text-muted);">
+      Are you sure you want to sign out? You will need to sign in again to access your account.
+    </div>
+    <div style="display:flex; justify-content:flex-end; gap:0.5rem;">
+      <button class="btn" data-modal-close>Cancel</button>
+      <a id="confirm-logout-btn" href="/auth/logout" class="btn btn-primary">Sign Out</a>
+    </div>
+  </div>
+</div>
 </body>
 </html>

@@ -73,6 +73,7 @@ $router->post('/api-keys/revoke/{id}', [ApiKeyController::class, 'revoke']);
 $router->get('/billing', [BillingController::class, 'index']);
 $router->post('/billing/payment-methods', [BillingController::class, 'storePaymentMethod']);
 $router->get('/billing/invoice/{id}', [BillingController::class, 'invoice']);
+$router->get('/billing/history', [BillingController::class, 'history']);
 
 // REST API v1
 $router->get('/api/v1/health', [ApiController::class, 'health']);

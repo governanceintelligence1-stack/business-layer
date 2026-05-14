@@ -526,7 +526,7 @@ class CheckoutController
             'name_last'      => (string)($user['last_name'] ?? ''),
             'email_address'  => (string)($user['email'] ?? ''),
             'custom_str1'    => $orgId,
-            'custom_str2'    => $planId,
+            'custom_str2'    => $persistedPlanId !== '' ? $persistedPlanId : $planId,
             'custom_str3'    => $billingCycle,
             'custom_str4'    => $invoiceId,
             'custom_str5'    => $paymentTransactionId,
@@ -674,6 +674,12 @@ class CheckoutController
         if ($rawBody === '') {
             $rawBody = file_get_contents('php://input') ?: '';
         }
+        // First-line debug: record notify hits and raw body for visibility
+        @file_put_contents(
+            BASE_PATH . '/storage/payfast-notify-hit.log',
+            date('c') . " notify hit\nRAW: " . $rawBody . "\n\n",
+            FILE_APPEND
+        );
         if ($rawBody === '' && strtoupper((string) ($_SERVER['REQUEST_METHOD'] ?? '')) === 'POST' && !empty($_POST)) {
             $rawBody = http_build_query($_POST);
         }
@@ -684,7 +690,7 @@ class CheckoutController
             FILE_APPEND
         );
 
-        $parsed = payfast_parse_raw_post($rawBody);
+        $parsed = $this->parsePayFastRawPost($rawBody);
         if ($parsed === [] && !empty($_POST)) {
             foreach ($_POST as $k => $v) {
                 if (!is_string($k)) {
@@ -695,6 +701,29 @@ class CheckoutController
         }
 
         $this->appendNotifyLog($parsed);
+
+        // Persist raw ITN to DB early so we always have a server-side record.
+        $itnLogId = '';
+        try {
+            $itnLogId = DB::getInstance()->insert('payfast_itn_logs', [
+                'received_at' => date('Y-m-d H:i:s'),
+                'remote_addr' => (string) ($_SERVER['REMOTE_ADDR'] ?? ''),
+                'user_agent' => (string) ($_SERVER['HTTP_USER_AGENT'] ?? ''),
+                'raw_body' => $rawBody,
+                'parsed_payload' => json_encode($parsed, JSON_UNESCAPED_SLASHES),
+                'merchant_reference' => trim((string) ($parsed['m_payment_id'] ?? '')),
+                'pf_payment_id' => trim((string) ($parsed['pf_payment_id'] ?? '')),
+                'payment_status' => trim((string) ($parsed['payment_status'] ?? '')),
+                'amount_gross' => number_format((float) ($parsed['amount_gross'] ?? 0), 2, '.', ''),
+                'signature_received' => trim((string) ($parsed['signature'] ?? '')),
+            ]);
+        } catch (\Throwable $e) {
+            // Make ITN log failures visible for local debugging.
+            error_log('checkout/notify: failed to insert payfast_itn_logs: ' . $e->getMessage());
+            http_response_code(500);
+            echo 'Failed to insert ITN log: ' . $e->getMessage();
+            return;
+        }
 
         $stringPayload = [];
         foreach ($parsed as $k => $v) {
@@ -721,7 +750,16 @@ class CheckoutController
                 return;
             }
 
-            $remoteAddr = (string) ($_SERVER['REMOTE_ADDR'] ?? '0.0.0.0');
+            // Prefer X-Forwarded-For when explicitly enabled in env (useful behind proxies).
+            $useXff = filter_var((string) (getenv('PAYFAST_USE_X_FORWARDED_FOR') ?: ($_ENV['PAYFAST_USE_X_FORWARDED_FOR'] ?? '')), FILTER_VALIDATE_BOOLEAN);
+            $remoteAddr = '0.0.0.0';
+            if ($useXff && !empty($_SERVER['HTTP_X_FORWARDED_FOR'])) {
+                // Use first IP in the list
+                $parts = explode(',', (string) $_SERVER['HTTP_X_FORWARDED_FOR']);
+                $remoteAddr = trim($parts[0]);
+            } elseif (!empty($_SERVER['REMOTE_ADDR'])) {
+                $remoteAddr = (string) $_SERVER['REMOTE_ADDR'];
+            }
             $providerRefEarly = trim((string) ($stringPayload['m_payment_id'] ?? ''));
             $expectedAmount = null;
             if ($providerRefEarly !== '') {
@@ -737,6 +775,15 @@ class CheckoutController
 
             $rawForSig = $rawBody !== '' ? $rawBody : null;
             if (!$payfast->validateItn($stringPayload, $remoteAddr, $expectedAmount, $rawForSig)) {
+                // Update log with validation failure if possible.
+                try {
+                    if ($itnLogId !== '') {
+                        DB::getInstance()->update('payfast_itn_logs', ['signature_valid' => false, 'processing_status' => 'validation_failed', 'processing_message' => 'signature or source invalid', 'updated_at' => date('Y-m-d H:i:s')], ['id' => $itnLogId]);
+                    }
+                } catch (\Throwable $e) {
+                    // ignore
+                }
+
                 http_response_code(400);
                 echo 'ITN validation failed';
 
@@ -760,6 +807,16 @@ class CheckoutController
 
         try {
             $code = $this->processPayfastItnInDatabase($stringPayload, $parsed);
+
+            // Mark ITN log processed with the response code.
+            try {
+                if ($itnLogId !== '') {
+                    DB::getInstance()->update('payfast_itn_logs', ['signature_valid' => true, 'processing_status' => ($code === 200 ? 'processed' : 'partial'), 'processing_message' => ($code === 200 ? '' : 'partial processing'), 'updated_at' => date('Y-m-d H:i:s')], ['id' => $itnLogId]);
+                }
+            } catch (\Throwable $e) {
+                // ignore
+            }
+
             http_response_code($code);
             if ($code === 400) {
                 echo 'Invalid amount';
@@ -768,6 +825,13 @@ class CheckoutController
             }
         } catch (\Throwable $e) {
             error_log('checkout/notify failed: ' . $e->getMessage());
+            try {
+                if ($itnLogId !== '') {
+                    DB::getInstance()->update('payfast_itn_logs', ['processing_status' => 'error', 'processing_message' => substr($e->getMessage(), 0, 4000), 'updated_at' => date('Y-m-d H:i:s')], ['id' => $itnLogId]);
+                }
+            } catch (\Throwable $e) {
+                // ignore
+            }
             http_response_code(500);
             echo 'ITN error';
         }
@@ -804,6 +868,7 @@ class CheckoutController
                     pt.organisation_id,
                     pt.amount,
                     pt.status,
+                    pt.raw_response,
                     bi.total,
                     bi.credits_granted
                 FROM payment_transactions pt
@@ -819,6 +884,31 @@ class CheckoutController
                 return 200;
             }
             error_log('checkout/notify: matched merchant_reference=' . $merchantRef . ' invoice_id=' . ($row['invoice_id'] ?? 'NULL'));
+
+            // If invoice already had credits granted, avoid duplicate processing.
+            if (!empty($row['credits_granted'])) {
+                error_log('checkout/notify: invoice already credited for merchant_reference=' . $merchantRef);
+                $pdo->commit();
+
+                return 200;
+            }
+
+            // Idempotency: if we've already recorded an ITN with the same PayFast pf_payment_id,
+            // don't process it again.
+            $existingRaw = (string) ($row['raw_response'] ?? '');
+            if ($existingRaw !== '') {
+                $decoded = json_decode($existingRaw, true);
+                if (is_array($decoded) && !empty($decoded['payfast_itn']['pf_payment_id'])) {
+                    $existingPf = (string) $decoded['payfast_itn']['pf_payment_id'];
+                    $incomingPf = trim((string) ($parsedPayload['pf_payment_id'] ?? ''));
+                    if ($incomingPf !== '' && $existingPf === $incomingPf) {
+                        error_log('checkout/notify: duplicate ITN ignored pf_payment_id=' . $incomingPf);
+                        $pdo->commit();
+
+                        return 200;
+                    }
+                }
+            }
 
             if (($row['status'] ?? '') === 'successful') {
                 $pdo->commit();
@@ -838,7 +928,7 @@ class CheckoutController
 
             if (!in_array($paymentStatus, ['complete', 'completed'], true)) {
                 if (in_array($paymentStatus, ['failed', 'failure', 'cancelled', 'canceled'], true)) {
-                    $txSvc->markFailed((string) $row['id'], $parsedPayload);
+                    $txSvc->markFailed((string) $row['payment_transaction_id'], $parsedPayload);
                 }
                 $pdo->commit();
 
@@ -877,8 +967,16 @@ class CheckoutController
             ? $payloadData['payload']
             : $payloadData;
         $itnPlan = trim((string) ($itnPayload['custom_str2'] ?? ''));
+
         if ($itnPlan !== '') {
-            $planId = $itnPlan;
+            try {
+                $candidatePlan = $planService->findById($itnPlan);
+                if ($candidatePlan) {
+                    $planId = $itnPlan;
+                }
+            } catch (\Throwable $e) {
+                // Keep existing planId and allow fallback logic to continue.
+            }
         }
         if ($planId === '') {
             $planId = $this->resolvePlanIdForMockPayment($inner + ['requested_plan_id' => $itnPlan]);
@@ -896,7 +994,7 @@ class CheckoutController
         if ($existing) {
             $subscriptionService->cancel((string) $existing['id']);
         }
-        $subscriptionService->create($orgId, $planId, $billingCycle);
+        $subscriptionId = $subscriptionService->create($orgId, $planId, $billingCycle);
 
         $plan = $planService->findById($planId);
         $planName = (string) ($plan['name'] ?? 'Plan');
@@ -930,8 +1028,88 @@ class CheckoutController
 
         $billingService->markCreditsGrantedForInvoice($invoiceId, $monthlyCredits);
 
+        // Attach subscription id to invoice when column exists, non-fatal if absent.
+        try {
+            DB::getInstance()->update('billing_invoices', array_filter(['subscription_id' => $subscriptionId]), ['id' => $invoiceId]);
+        } catch (\Throwable $e) {
+            // ignore
+        }
+
         $txId = (string) ($lockedTx['payment_transaction_id'] ?? ($lockedTx['id'] ?? ''));
-        $txSvc->markSuccessfulWithItn($txId, $itnPayload, $invoiceId);
+        try {
+            // Perform the final update within the current transaction using the same PDO
+            $pdo = DB::getInstance()->getPdo();
+            $row = $pdo->prepare("SELECT raw_response FROM payment_transactions WHERE id = :id");
+            $row->execute(['id' => $txId]);
+            $existing = $row->fetch(\PDO::FETCH_ASSOC)['raw_response'] ?? '';
+            $existingDecoded = [];
+            if (is_string($existing) && $existing !== '') {
+                $decoded = json_decode($existing, true);
+                $existingDecoded = is_array($decoded) ? $decoded : [];
+            }
+            $merged = array_merge($existingDecoded, ['payfast_itn' => $itnPayload]);
+            $pfId = trim((string)($itnPayload['pf_payment_id'] ?? '')) ?: null;
+
+            $upd = $pdo->prepare("UPDATE payment_transactions SET status = :status, raw_response = :raw_response::jsonb, provider_transaction_id = :pf_id, invoice_id = :invoice_id, updated_at = now() WHERE id = :id");
+            $upd->execute([
+                'status' => 'successful',
+                'raw_response' => json_encode($merged, JSON_UNESCAPED_SLASHES),
+                'pf_id' => $pfId,
+                'invoice_id' => $invoiceId,
+                'id' => $txId,
+            ]);
+
+            $updatedRows = $upd->rowCount();
+            error_log('checkout/notify: direct update updated_rows=' . intval($updatedRows) . ' txId=' . $txId);
+            try {
+                $after = DB::getInstance()->fetch('SELECT id,status,provider_transaction_id,raw_response FROM payment_transactions WHERE id = :id', ['id' => $txId]);
+                error_log('checkout/notify: post-update tx status=' . ($after['status'] ?? 'NULL') . ' provider_tx=' . ($after['provider_transaction_id'] ?? 'NULL'));
+            } catch (\Throwable $e) {
+                error_log('checkout/notify: failed to fetch post-update tx: ' . $e->getMessage());
+            }
+        } catch (\Throwable $e) {
+            error_log('checkout/notify: direct update failed: ' . $e->getMessage());
+            throw $e;
+        }
+
+        // Update subscription with last invoice/payment refs and insert events/audit where possible.
+        try {
+            DB::getInstance()->update('subscriptions', array_filter([
+                'last_invoice_id' => $invoiceId,
+                'last_payment_transaction_id' => $txId,
+            ]), ['id' => $subscriptionId]);
+        } catch (\Throwable $e) {
+            // ignore
+        }
+
+        try {
+            DB::getInstance()->insert('subscription_events', [
+                'subscription_id' => $subscriptionId,
+                'organisation_id' => $orgId,
+                'event_type' => 'payment_successful',
+                'metadata' => json_encode(['invoice_id' => $invoiceId, 'payment_transaction_id' => $txId], JSON_UNESCAPED_SLASHES),
+                'created_at' => date('Y-m-d H:i:s'),
+            ]);
+        } catch (\Throwable $e) {
+            // ignore
+        }
+
+        try {
+            DB::getInstance()->insert('audit_logs', [
+                'organisation_id' => $orgId,
+                'action' => 'subscription.payment_successful',
+                'entity_type' => 'subscription',
+                'entity_id' => $subscriptionId,
+                'new_values' => json_encode([
+                    'subscription_id' => $subscriptionId,
+                    'invoice_id' => $invoiceId,
+                    'payment_transaction_id' => $txId,
+                ], JSON_UNESCAPED_SLASHES),
+                'created_at' => date('Y-m-d H:i:s'),
+            ]);
+        } catch (\Throwable $e) {
+            // ignore
+        }
     }
 
     private function decodeTxPayload(mixed $rawPayload): array
@@ -944,6 +1122,32 @@ class CheckoutController
             return is_array($decoded) ? $decoded : [];
         }
         return [];
+    }
+
+    private function parsePayFastRawPost(string $rawBody): array
+    {
+        $data = [];
+
+        if ($rawBody === '') {
+            return $data;
+        }
+
+        foreach (explode('&', $rawBody) as $pair) {
+            if ($pair === '') {
+                continue;
+            }
+
+            [$key, $value] = array_pad(explode('=', $pair, 2), 2, '');
+
+            $decodedKey = urldecode($key);
+            $decodedValue = urldecode($value);
+
+            if ($decodedKey !== '') {
+                $data[$decodedKey] = $decodedValue;
+            }
+        }
+
+        return $data;
     }
 
     private function resolvePlanIdForMockPayment(array $payload): string

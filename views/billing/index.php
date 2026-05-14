@@ -433,6 +433,9 @@ tr:hover td { background: var(--muted); }
               </tbody>
             </table>
           </div>
+        <div style="margin-top:0.75rem; display:flex; justify-content:flex-end;">
+          <a href="/billing/history" class="btn">View all invoices</a>
+        </div>
         <?php else: ?>
           <div class="empty-state">
             <div class="empty-state-icon">💳</div>

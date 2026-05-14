@@ -45,7 +45,8 @@ class BillingController
 
         try {
             $billingService = new BillingService();
-            $invoices       = $orgId ? $billingService->getInvoices($orgId) : [];
+            // Show a compact recent history on the Billing overview page.
+            $invoices       = $orgId ? $billingService->getRecentInvoices($orgId, 5) : [];
             if ($orgId) {
                 $pmService = new PaymentMethodService();
                 $methods = $pmService->getForOrganisation((string)$orgId);
@@ -80,6 +81,32 @@ class BillingController
             'invoices' => $invoices,
             'paymentMethods' => $methods,
             'paymentMethod' => $paymentMethod,
+        ]);
+    }
+
+    public function history(): void
+    {
+        Middleware::auth();
+        $user = Session::get('user');
+        $orgId = $user['organisation_id'] ?? '';
+
+        $page = max(1, (int)($_GET['page'] ?? 1));
+        $perPage = 20;
+        $offset = ($page - 1) * $perPage;
+
+        $billingService = new BillingService();
+        $result = $orgId ? $billingService->getInvoicesPaged($orgId, $perPage, $offset) : ['rows' => [], 'count' => 0];
+        $invoices = $result['rows'];
+        $total = (int)$result['count'];
+        $totalPages = $total > 0 ? (int)ceil($total / $perPage) : 1;
+
+        View::render('billing/history', [
+            'user' => $user,
+            'invoices' => $invoices,
+            'page' => $page,
+            'total' => $total,
+            'totalPages' => $totalPages,
+            'perPage' => $perPage,
         ]);
     }
 

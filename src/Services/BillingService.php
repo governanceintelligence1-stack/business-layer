@@ -51,6 +51,24 @@ class BillingService
         );
     }
 
+    public function getRecentInvoices(string $orgId, int $limit = 5): array
+    {
+        return $this->db->fetchAll(
+            'SELECT * FROM billing_invoices WHERE organisation_id = :org_id ORDER BY created_at DESC LIMIT :limit',
+            ['org_id' => $orgId, 'limit' => $limit]
+        );
+    }
+
+    public function getInvoicesPaged(string $orgId, int $limit = 20, int $offset = 0): array
+    {
+        $rows = $this->db->fetchAll(
+            'SELECT * FROM billing_invoices WHERE organisation_id = :org_id ORDER BY created_at DESC LIMIT :limit OFFSET :offset',
+            ['org_id' => $orgId, 'limit' => $limit, 'offset' => $offset]
+        );
+        $count = $this->db->fetch('SELECT COUNT(*) AS c FROM billing_invoices WHERE organisation_id = :org_id', ['org_id' => $orgId]);
+        return ['rows' => $rows, 'count' => (int)($count['c'] ?? 0)];
+    }
+
     public function getInvoice(string $id): array|false
     {
         $invoice = $this->db->fetch(

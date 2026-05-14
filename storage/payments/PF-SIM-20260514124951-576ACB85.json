@@ -1,0 +1,13 @@
+{
+    "provider_ref": "PF-SIM-20260514124951-576ACB85",
+    "created_at": "2026-05-14T12:49:51+02:00",
+    "status": "complete",
+    "last_payload": {
+        "m_payment_id": "PF-SIM-20260514124951-576ACB85",
+        "payment_status": "COMPLETE",
+        "pf_payment_id": "SIM-9c8697b42db9",
+        "amount_gross": "500.00",
+        "merchant_id": "10048671"
+    },
+    "updated_at": "2026-05-14T12:49:51+02:00"
+}
