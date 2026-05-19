@@ -7,6 +7,7 @@ use GI\Core\Middleware;
 use GI\Core\Session;
 use GI\Core\View;
 use GI\Services\BillingService;
+use GI\Services\SubscriptionService;
 use GI\Services\PaymentMethodService;
 
 class BillingController
@@ -73,6 +74,39 @@ class BillingController
             // Database may not be set up yet, continue with empty invoices
         }
 
+        // Compute billing overview values: next invoice date, last payment amount, active plan
+        $nextInvoiceDate = null;
+        $lastPaymentAmount = 0.0;
+        $activePlan = null;
+
+        try {
+            if ($orgId) {
+                $subscriptionService = new SubscriptionService();
+                $active = $subscriptionService->getActive($orgId);
+                if ($active) {
+                    $activePlan = $active['plan_name'] ?? ($active['plan_slug'] ?? null);
+                    if (!empty($active['current_period_end'])) {
+                        $ts = strtotime($active['current_period_end']);
+                        if ($ts !== false) {
+                            $nextInvoiceDate = date('F j, Y', $ts);
+                        }
+                    }
+                }
+
+                // Last payment: pick the most recent paid invoice from the recent list
+                foreach ($invoices as $inv) {
+                    $status = strtolower((string)($inv['status'] ?? ''));
+                    $amt = (float)($inv['amount_paid'] ?? $inv['amount_total'] ?? $inv['total'] ?? 0);
+                    if ($status === 'paid' || $amt > 0) {
+                        $lastPaymentAmount = $amt;
+                        break;
+                    }
+                }
+            }
+        } catch (\Throwable $e) {
+            // ignore and let overview show placeholders
+        }
+
         // Keep a reusable "existing billing method" for checkout preloading.
         Session::set('default_payment_method', $paymentMethod);
 
@@ -81,6 +115,9 @@ class BillingController
             'invoices' => $invoices,
             'paymentMethods' => $methods,
             'paymentMethod' => $paymentMethod,
+            'nextInvoiceDate' => $nextInvoiceDate,
+            'lastPaymentAmount' => $lastPaymentAmount,
+            'activePlan' => $activePlan,
         ]);
     }
 

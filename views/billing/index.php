@@ -379,15 +379,15 @@ tr:hover td { background: var(--muted); }
     <div class="card-grid card-grid-3" style="margin-bottom: 1.5rem;">
       <div class="stat-card card">
         <span class="stat-label">Next Invoice</span>
-        <span class="stat-value">June 1, 2026</span>
+        <span class="stat-value"><?= htmlspecialchars($nextInvoiceDate ?? '—') ?></span>
       </div>
       <div class="stat-card card">
         <span class="stat-label">Last Payment</span>
-        <span class="stat-value">R1,250.00</span>
+        <span class="stat-value">R<?= number_format((float)($lastPaymentAmount ?? 0), 2) ?></span>
       </div>
       <div class="stat-card card">
         <span class="stat-label">Active Plan</span>
-        <span class="stat-value" style="font-size: 1.25rem;">Business Pro</span>
+        <span class="stat-value" style="font-size: 1.25rem;"><?= htmlspecialchars($activePlan ?? '—') ?></span>
       </div>
     </div>
 

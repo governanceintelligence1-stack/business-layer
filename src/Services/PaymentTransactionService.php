@@ -156,4 +156,12 @@ class PaymentTransactionService
 
         return $this->db->update('payment_transactions', $data, ['id' => $id]);
     }
+
+    public function getRecentForOrganisation(string $orgId, int $limit = 20, int $offset = 0): array
+    {
+        return $this->db->fetchAll(
+            'SELECT * FROM payment_transactions WHERE organisation_id = :org_id ORDER BY created_at DESC LIMIT :limit OFFSET :offset',
+            ['org_id' => $orgId, 'limit' => $limit, 'offset' => $offset]
+        );
+    }
 }

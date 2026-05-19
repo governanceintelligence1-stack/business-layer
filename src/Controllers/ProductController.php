@@ -28,7 +28,7 @@ class ProductController
             'cta'         => 'Start Transcription',
         ],
         'bank-statements' => [
-            'title'       => 'Bank Statements',
+            'title'       => 'Banking Intelligence',
             'description' => 'Parse, normalize, and categorize statement transactions for investigation.',
             'cta'         => 'Process Statements',
         ],

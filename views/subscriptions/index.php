@@ -80,7 +80,8 @@
         </tr>
       </thead>
       <tbody>
-        <?php foreach ($allSubs as $sub): ?>
+        <?php $displaySubs = array_slice($allSubs, 0, 5); ?>
+        <?php foreach ($displaySubs as $sub): ?>
         <tr>
           <td><?= htmlspecialchars($sub['plan_name']) ?></td>
           <td><?= htmlspecialchars(ucfirst($sub['billing_cycle'] ?? '')) ?></td>
@@ -95,6 +96,10 @@
         <?php endforeach; ?>
       </tbody>
     </table>
+  </div>
+  <div style="margin-top:0.75rem; display:flex; justify-content:space-between; align-items:center;">
+    <a href="/subscriptions/history" class="btn">View all subscriptions</a>
+    <a href="/subscriptions/transactions" class="btn">View transactions</a>
   </div>
 </div>
 <?php endif; ?>

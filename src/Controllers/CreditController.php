@@ -41,22 +41,9 @@ class CreditController
 
     public function topup(): void
     {
+        // Manual top-ups are disabled. Top-ups are only granted via subscriptions.
         Middleware::auth();
-        $user  = Session::get('user');
-        $orgId = $user['organisation_id'] ?? '';
-
-        $amount = (float) ($_POST['amount'] ?? 0);
-
-        if ($amount <= 0 || empty($orgId)) {
-            Session::flash('error', 'Invalid top-up amount.');
-            header('Location: /credits');
-            exit;
-        }
-
-        $creditService = new CreditService();
-        $creditService->addCredits($orgId, $amount, 'Manual top-up', 'topup', '');
-
-        Session::flash('success', number_format($amount, 0) . ' credits added successfully.');
+        Session::flash('error', 'Manual top-ups are disabled. Use a subscription to receive credits.');
         header('Location: /credits');
         exit;
     }
@@ -82,7 +69,7 @@ class CreditController
             }
         }
 
-        View::render('credits/index', [
+        View::render('credits/history', [
             'user'          => $user,
             'balance'       => $balance,
             'transactions'  => $transactions,

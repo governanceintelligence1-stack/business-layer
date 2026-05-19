@@ -53,6 +53,8 @@ $router->get('/plans', [PlanController::class, 'index']);
 $router->get('/subscriptions', [SubscriptionController::class, 'index']);
 $router->post('/subscriptions/subscribe/{planId}', [SubscriptionController::class, 'subscribe']);
 $router->post('/subscriptions/cancel', [SubscriptionController::class, 'cancel']);
+$router->get('/subscriptions/history', [SubscriptionController::class, 'history']);
+$router->get('/subscriptions/transactions', [SubscriptionController::class, 'transactions']);
 $router->get('/checkout', [\GI\Controllers\CheckoutController::class, 'index']);
 $router->post('/checkout/pay', [\GI\Controllers\CheckoutController::class, 'pay']);
 $router->get('/checkout/return', [\GI\Controllers\CheckoutController::class, 'return']);
@@ -61,7 +63,6 @@ $router->post('/checkout/notify', [\GI\Controllers\CheckoutController::class, 'n
 
 // Credits
 $router->get('/credits', [CreditController::class, 'index']);
-$router->post('/credits/topup', [CreditController::class, 'topup']);
 $router->get('/credits/history', [CreditController::class, 'history']);
 
 // API Keys

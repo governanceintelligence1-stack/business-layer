@@ -823,8 +823,8 @@ tbody tr:hover {
                           $productName = 'Upload Forensic Image';
                       } elseif (str_contains($desc, 'mobile')) {
                           $productName = 'Mobile Forensics';
-                      } elseif (str_contains($desc, 'bank')) {
-                          $productName = 'Bank Statements';
+                        } elseif (str_contains($desc, 'bank')) {
+                          $productName = 'Banking Intelligence';
                       } elseif (str_contains($desc, 'transcription')) {
                           $productName = 'Transcription';
                       } elseif (!empty($tx['ref_type'])) {
@@ -839,7 +839,7 @@ tbody tr:hover {
                   }
                 ?>
                 <tr>
-                  <td style="padding: 0.4rem;"><?= htmlspecialchars(substr($tx['created_at'], 5, 5)) ?></td>
+                  <td style="padding: 0.4rem;"><?= htmlspecialchars(date('j M', strtotime((string) ($tx['created_at'] ?? '')))) ?></td>
                   <td style="padding: 0.4rem; font-weight: 600; color: var(--foreground);">
                     <?= htmlspecialchars($productName) ?>
                   </td>
