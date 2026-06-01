@@ -24,26 +24,33 @@
   --font-sans: Inter, Roboto, "Segoe UI", sans-serif;
 }
 
+body {
+  overflow: hidden;
+}
+
 .plans-shell {
   width: 100%;
   max-width: 1180px;
   margin: 0 auto;
-  padding: 8.25rem 1rem 4rem;
+  height: calc(100vh - 4rem);
+  padding: 4.75rem 1rem 0;
+  overflow: hidden;
+  box-sizing: border-box;
 }
 
 .page-header {
   display: flex;
-  align-items: flex-start;
+  align-items: center;
   justify-content: space-between;
   gap: 1rem;
-  margin-bottom: 2rem;
+  margin-bottom: 0;
   position: fixed;
   top: 0;
   left: 268px; /* Matches sidebar width */
   right: 0;
   z-index: 60;
   background: white;
-  padding: 2rem 2rem 0.75rem;
+  padding: 0.8rem 2rem 0.7rem;
   border-bottom: 1px solid var(--border);
 }
 
@@ -64,24 +71,24 @@
 .page-title {
   margin: 0;
   color: var(--foreground);
-  font-size: 2.25rem;
+  font-size: 1.65rem;
   font-weight: 700;
   letter-spacing: -0.04em;
 }
 
 .page-subtitle {
-  margin: 0.5rem 0 0;
+  margin: 0.25rem 0 0;
   color: var(--muted-foreground);
-  font-size: 0.925rem;
+  font-size: 0.82rem;
 }
 
 /* Pricing Grid */
 .pricing-grid {
   display: grid;
   grid-template-columns: repeat(3, 1fr);
-  gap: 1.25rem;
-  margin-top: 1rem;
-  max-width: 960px; /* Constrain width to help reduce size */
+  gap: 0.85rem;
+  margin-top: 0.4rem;
+  max-width: 1040px;
   margin-left: auto;
   margin-right: auto;
 }
@@ -90,7 +97,7 @@
   position: relative;
   display: flex;
   flex-direction: column;
-  padding: 1.5rem;
+  padding: 1rem;
   background: var(--card);
   border: 1px solid var(--border);
   border-radius: var(--radius);
@@ -103,62 +110,51 @@
   box-shadow: 0 8px 24px rgba(0, 0, 0, 0.04);
 }
 
+
+
 .pricing-card.featured {
   border-color: var(--primary);
   background: var(--primary);
-  color: var(--primary-foreground);
   box-shadow: 0 8px 24px rgba(0, 0, 0, 0.08);
 }
 
-.featured-badge {
-  position: absolute;
-  top: -10px;
-  left: 50%;
-  transform: translateX(-50%);
-  background: #000;
+.featured .plan-name,
+.featured .plan-price,
+.featured .plan-price span {
   color: #fff;
-  padding: 0.2rem 0.6rem;
-  border-radius: 999px;
-  font-size: 0.65rem;
-  font-weight: 700;
-  text-transform: uppercase;
-  letter-spacing: 0.04em;
-  border: 2px solid #fff;
-}
-
-.featured .featured-badge {
-    background: #fff;
-    color: #000;
 }
 
 .plan-name {
-  font-size: 1.1rem;
+  font-size: 1rem;
   font-weight: 700;
   letter-spacing: -0.01em;
-  margin-bottom: 0.4rem;
+  margin-bottom: 0.25rem;
+  text-align: center;
 }
 
 .plan-price {
-  font-size: 1.85rem;
+  font-size: 1.45rem;
   font-weight: 800;
   letter-spacing: -0.03em;
-  margin: 1.25rem 0;
+  margin: 0.55rem 0 0.75rem;
   display: flex;
   align-items: baseline;
+  justify-content: flex-start;
   gap: 0.2rem;
 }
 
 .plan-price span {
-  font-size: 0.85rem;
+  font-size: 0.75rem;
   font-weight: 500;
   opacity: 0.7;
 }
 
 .plan-description {
-  font-size: 0.8rem;
-  line-height: 1.4;
-  margin-bottom: 1.5rem;
-  min-height: 2.5rem;
+  font-size: 0.72rem;
+  line-height: 1.25;
+  margin-bottom: 0.65rem;
+  min-height: 1.8rem;
+  text-align: center;
 }
 
 .featured .plan-description {
@@ -168,21 +164,25 @@
 .plan-features {
   list-style: none;
   padding: 0;
-  margin: 0 0 1.5rem 0;
+  margin: 0 0 0.75rem 0;
   flex: 1;
 }
 
 .plan-features li {
   display: flex;
   align-items: center;
-  gap: 0.6rem;
-  margin-bottom: 0.6rem;
-  font-size: 0.75rem;
+  gap: 0.45rem;
+  margin-bottom: 0.32rem;
+  font-size: 0.68rem;
+}
+
+.pricing-card:not(.featured) .plan-features li::before {
+  color: #000;
 }
 
 .feature-icon {
-  width: 16px;
-  height: 16px;
+  width: 12px;
+  height: 12px;
   flex-shrink: 0;
 }
 
@@ -190,9 +190,9 @@
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  padding: 0.6rem 0.8rem;
+  padding: 0.45rem 0.7rem;
   border-radius: var(--radius-sm);
-  font-size: 0.825rem;
+  font-size: 0.78rem;
   font-weight: 600;
   text-decoration: none;
   transition: all 0.2s ease;
@@ -217,8 +217,9 @@
 }
 
 @media (max-width: 1024px) {
-  .page-header { left: 0; padding: 2rem 1rem 0.75rem; }
-  .plans-shell { padding-top: 9rem; }
+  body { overflow: auto; }
+  .page-header { left: 0; padding: 0.8rem 1rem 0.7rem; }
+  .plans-shell { height: auto; padding-top: 4.75rem; overflow: visible; }
   .pricing-grid { grid-template-columns: 1fr; }
 }
 </style>
@@ -227,9 +228,8 @@
 
   <div class="page-header">
     <div class="page-header-main">
-      <div class="page-eyebrow">Subscriptions</div>
       <h1 class="page-title">Plans & Pricing</h1>
-      <p class="page-subtitle">Choose the perfect plan for your organisation's scale.</p>
+      <p class="page-subtitle">All plans include every product. Higher tiers include more monthly tokens for repeated use.</p>
     </div>
   </div>
 
@@ -253,10 +253,6 @@
       $isFeatured = (($plan['slug'] ?? '') === 'professional');
     ?>
       <div class="pricing-card <?= $isFeatured ? 'featured' : '' ?>">
-        <?php if ($isFeatured): ?>
-          <div class="featured-badge">Popular</div>
-        <?php endif; ?>
-
         <div class="plan-name"><?= htmlspecialchars($plan['name']) ?></div>
         <div class="plan-description"><?= htmlspecialchars($plan['description'] ?? '') ?></div>
         
@@ -266,16 +262,18 @@
         </div>
 
         <ul class="plan-features">
-          <?php 
-          $features = is_array($plan['features']) ? $plan['features'] : [];
-          foreach ($features as $feature): 
+          <li><?= number_format((float)($plan['credits_monthly'] ?? 0), 0) ?> tokens / month</li>
+          <?php
+          $products = is_array($plan['products'] ?? null) ? $plan['products'] : [];
+          $features = $products !== []
+              ? array_map(static fn(array $product): string => (string)($product['name'] ?? ''), $products)
+              : (is_array($plan['features'] ?? null) ? $plan['features'] : []);
+          foreach ($features as $feature):
+            if ((string)$feature === '') {
+                continue;
+            }
           ?>
-            <li>
-              <svg class="feature-icon" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="3" d="M5 13l4 4L19 7"></path>
-              </svg>
-              <?= htmlspecialchars($feature) ?>
-            </li>
+            <li><?= htmlspecialchars($feature) ?></li>
           <?php endforeach; ?>
         </ul>
 

@@ -34,7 +34,10 @@
                   <?= htmlspecialchars(ucfirst($inv['status'] ?? '')) ?>
                 </span>
               </td>
-              <td style="text-align:right;"><a href="/billing/invoice/<?= htmlspecialchars($inv['id']) ?>" class="btn">View</a></td>
+              <td style="text-align:right;">
+                <a href="/billing/invoice/<?= htmlspecialchars($inv['id']) ?>" class="btn">View</a>
+                <a href="/billing/invoice/<?= htmlspecialchars($inv['id']) ?>/download" class="btn">Download</a>
+              </td>
             </tr>
           <?php endforeach; ?>
         </tbody>

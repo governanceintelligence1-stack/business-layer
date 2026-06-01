@@ -745,7 +745,11 @@ tbody tr:hover {
 
     <div class="page-header-actions">
       <div class="page-header-meta">
-        Credit Balance: <strong><?= number_format((float) $creditBalance, 0) ?></strong>
+        Available: <strong><?= number_format((float) ($tokensAvailable ?? $tokenBalance ?? 0), 0) ?></strong>
+        <?php if ((float) ($tokensReserved ?? 0) > 0): ?>
+          · Pending: <strong style="color:var(--warning);"><?= number_format((float) $tokensReserved, 0) ?></strong>
+        <?php endif; ?>
+        · Total: <strong><?= number_format((float) ($tokenBalance ?? $creditBalance ?? 0), 0) ?></strong>
       </div>
       <div class="page-header-meta">
         <strong><?= htmlspecialchars($activePlan['plan_name'] ?? '—') ?></strong>
@@ -759,8 +763,8 @@ tbody tr:hover {
   <!-- Bento Grid -->
   <div class="bento-grid">
 
-    <!-- Credit Usage Trend -->
-    <?php require __DIR__ . '/components/credit-usage-trend.php'; ?>
+    <!-- Token Usage Trend -->
+    <?php require __DIR__ . '/components/token-usage-trend.php'; ?>
 
     <!-- Updates -->
     <div class="card span-row-2" style="display: flex; flex-direction: column; height: 75%;">
@@ -796,7 +800,7 @@ tbody tr:hover {
     <!-- Recent Transactions -->
     <div class="card" style="padding: 1rem; display: flex; flex-direction: column;">
       <div class="card-header" style="margin-bottom: 0.5rem;">
-        <h3 class="card-title" style="font-size: 0.85rem;">Recent Credit Transactions</h3>
+        <h3 class="card-title" style="font-size: 0.85rem;">Recent Token Transactions</h3>
       </div>
 
       <?php
@@ -837,9 +841,12 @@ tbody tr:hover {
                   if ($tokensUsed < 0) {
                       $tokensUsed = abs($tokensUsed);
                   }
+                  $txDate = !empty($tx['created_at'])
+                      ? date('j M', strtotime((string) $tx['created_at']))
+                      : '—';
                 ?>
                 <tr>
-                  <td style="padding: 0.4rem;"><?= htmlspecialchars(substr($tx['created_at'], 5, 5)) ?></td>
+                  <td class="table-date" style="padding: 0.4rem;"><?= htmlspecialchars($txDate) ?></td>
                   <td style="padding: 0.4rem; font-weight: 600; color: var(--foreground);">
                     <?= htmlspecialchars($productName) ?>
                   </td>
@@ -856,7 +863,7 @@ tbody tr:hover {
       <?php endif; ?>
 
       <div style="margin-top: auto; padding-top: 0.9rem;">
-        <a href="/credits/history" style="font-size: 0.7rem; color: var(--primary); font-weight: 600; text-decoration: none; display: block; text-align: right;">
+        <a href="/tokens/history" style="font-size: 0.7rem; color: var(--primary); font-weight: 600; text-decoration: none; display: block; text-align: right;">
           View All →
         </a>
       </div>
@@ -868,10 +875,10 @@ tbody tr:hover {
         <h3 class="card-title" style="font-size: 0.95rem;">Quick Actions</h3>
       </div>
       <div class="action-list">
-        <a href="/credits" class="btn btn-ghost action-item">
+        <a href="/tokens" class="btn btn-ghost action-item">
           <span class="action-left">
             <span class="action-text">
-              <span class="action-title">Credit Usage</span>
+              <span class="action-title">Token Usage</span>
             </span>
           </span>
           <span class="action-arrow">↗</span>

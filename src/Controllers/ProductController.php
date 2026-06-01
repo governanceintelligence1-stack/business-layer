@@ -8,6 +8,7 @@ use GI\Core\Session;
 use GI\Core\View;
 use GI\Services\ProductService;
 use GI\Services\EntitlementService;
+use GI\Services\TokenService;
 
 class ProductController
 {
@@ -39,33 +40,75 @@ class ProductController
         ],
     ];
 
+    private const COMPONENT_PRODUCT_SLUGS = [
+        'upload-forensic-image' => 'forensic-upload',
+        'ocr' => 'ocr-document-analysis',
+        'transcription' => 'transcription',
+        'bank-statements' => 'bank-statement-analysis',
+        'file-comparison' => 'file-comparison',
+    ];
+
     public function index(): void
     {
         Middleware::auth();
         $user  = Session::get('user');
-        $orgId = $user['organisation_id'] ?? '';
+        $orgId = (string) ($user['organisation_id'] ?? '');
 
         $productService     = new ProductService();
         $entitlementService = new EntitlementService();
+        $tokenService       = new TokenService();
 
         $products = [];
+        $availableBalance = 0.0;
+        $reservedBalance  = 0.0;
+        $hasSubscription = false;
+
         try {
+            if ($orgId !== '') {
+                $summary          = $tokenService->getAccountSummary($orgId);
+                $availableBalance = $summary['available'];
+                $reservedBalance  = $summary['reserved'];
+                $hasSubscription  = $entitlementService->hasActiveSubscription($orgId);
+            }
+
             $products = $productService->getActive();
             foreach ($products as &$product) {
-                $product['has_access'] = $orgId
-                    ? $entitlementService->checkAccess($orgId, $product['slug'])
-                    : false;
+                $slug = (string) ($product['slug'] ?? '');
+                $evaluation = $orgId !== '' && $slug !== ''
+                    ? $entitlementService->evaluateProductAccess($orgId, $slug)
+                    : [
+                        'can_use'           => false,
+                        'reason'            => 'Not signed in',
+                        'has_subscription'  => false,
+                        'token_cost'        => (float) ($product['credit_cost'] ?? 0),
+                        'available_balance' => 0.0,
+                    ];
+
+                $product['has_access'] = $evaluation['can_use'];
+                $product['access_reason'] = $evaluation['reason'];
+                $product['token_cost'] = $evaluation['token_cost'] ?? (float) ($product['credit_cost'] ?? 0);
+                $product['credit_cost'] = $product['token_cost'];
             }
+            unset($product);
         } catch (\Exception $e) {
             // Database may not be set up yet
         }
 
-        View::render('products/index', ['user' => $user, 'products' => $products]);
+        View::render('products/index', [
+            'user'              => $user,
+            'products'          => $products,
+            'availableBalance'  => $availableBalance,
+            'reservedBalance'   => $reservedBalance,
+            'hasSubscription'   => $hasSubscription,
+            'minimumMonthlyTokens' => (new EntitlementService())->getMinimumMonthlyTokens(),
+        ]);
     }
 
     private function renderComponent(string $component): void
     {
         Middleware::auth();
+        $user = Session::get('user');
+        $orgId = (string)($user['organisation_id'] ?? '');
 
         if (!isset(self::COMPONENT_PAGES[$component])) {
             http_response_code(404);
@@ -74,6 +117,39 @@ class ProductController
                 'componentDescription' => 'The requested product component does not exist.',
                 'componentCta'         => 'Back to Products',
                 'componentPath'        => '/products',
+            ]);
+            return;
+        }
+
+        $productSlug = self::COMPONENT_PRODUCT_SLUGS[$component] ?? $component;
+        $evaluation  = $orgId !== ''
+            ? (new EntitlementService())->evaluateProductAccess($orgId, $productSlug)
+            : ['can_use' => false, 'reason' => 'No organisation'];
+
+        if (!$evaluation['can_use']) {
+            http_response_code(403);
+            $cost = $evaluation['token_cost'] ?? null;
+            $available = $evaluation['available_balance'] ?? 0;
+
+            if (($evaluation['reason'] ?? '') === 'Insufficient tokens') {
+                $description = sprintf(
+                    'This product costs %s tokens per use. You have %s available. Top up or upgrade your plan for more monthly tokens.',
+                    $cost !== null ? number_format($cost, 2) : '—',
+                    number_format($available, 2)
+                );
+                $cta  = 'View Tokens';
+                $path = '/tokens';
+            } else {
+                $description = 'An active subscription is required. All plans include every product; usage is limited by your monthly token balance.';
+                $cta  = 'View Plans';
+                $path = '/plans';
+            }
+
+            View::render('products/component', [
+                'componentTitle'       => 'Cannot use this product yet',
+                'componentDescription' => $description,
+                'componentCta'         => $cta,
+                'componentPath'        => $path,
             ]);
             return;
         }

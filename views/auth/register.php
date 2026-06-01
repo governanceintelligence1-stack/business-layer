@@ -7,7 +7,7 @@ $hidePublicFooter = true;
   <div class="auth-container">
     <div class="auth-box" style="max-width:640px;">
       <div class="auth-logo">
-        <div class="nav-logo-icon">GI</div>
+        <?php $logoSize = 48; include BASE_PATH . '/views/partials/brand-logo.php'; ?>
         <div>GI <span>Smartanalytics</span></div>
       </div>
       <h1 class="auth-title">Register Your Organisation</h1>

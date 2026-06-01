@@ -65,7 +65,7 @@ The app uses a lightweight MVC-style structure with service-layer business logic
 - `/products`
 - `/plans`
 - `/subscriptions`
-- `/credits`
+- `/tokens` (legacy `/credits` redirects here)
 - `/api-keys`
 - `/billing`
 

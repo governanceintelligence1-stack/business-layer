@@ -357,7 +357,7 @@ tr:hover td { background: var(--muted); }
                   <td><?= htmlspecialchars($li['description'] ?? '') ?></td>
                   <td><?= htmlspecialchars($li['quantity'] ?? '1') ?></td>
                   <td>R<?= number_format((float)($li['unit_price'] ?? 0), 2) ?></td>
-                  <td style="text-align:right; font-weight:600;">R<?= number_format((float)($li['total'] ?? 0), 2) ?></td>
+                  <td style="text-align:right; font-weight:600;">R<?= number_format((float)($li['line_total'] ?? $li['total'] ?? 0), 2) ?></td>
                 </tr>
               <?php endforeach; ?>
             </tbody>
@@ -370,7 +370,7 @@ tr:hover td { background: var(--muted); }
           <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m15 18-6-6 6-6"/></svg>
           Back to Invoices
         </a>
-        <button class="btn btn-primary">Download PDF</button>
+        <a href="/billing/invoice/<?= htmlspecialchars((string)$invoice['id']) ?>/download" class="btn btn-primary">Download PDF</a>
       </div>
     </div>
 
@@ -379,15 +379,15 @@ tr:hover td { background: var(--muted); }
     <div class="card-grid card-grid-3" style="margin-bottom: 1.5rem;">
       <div class="stat-card card">
         <span class="stat-label">Next Invoice</span>
-        <span class="stat-value">June 1, 2026</span>
+        <span class="stat-value"><?= htmlspecialchars($nextInvoiceDate ?? '—') ?></span>
       </div>
       <div class="stat-card card">
         <span class="stat-label">Last Payment</span>
-        <span class="stat-value">R1,250.00</span>
+        <span class="stat-value">R<?= number_format((float)($lastPaymentAmount ?? 0), 2) ?></span>
       </div>
       <div class="stat-card card">
         <span class="stat-label">Active Plan</span>
-        <span class="stat-value" style="font-size: 1.25rem;">Business Pro</span>
+        <span class="stat-value" style="font-size: 1.25rem;"><?= htmlspecialchars($activePlan ?? '—') ?></span>
       </div>
     </div>
 
@@ -504,7 +504,7 @@ tr:hover td { background: var(--muted); }
               <button class="btn btn-primary btn-sm" type="submit">Save Card</button>
             </div>
             <p style="margin-top:0.65rem; margin-bottom:0; font-size:0.75rem; color:var(--muted-foreground);">
-              For security, full card number and CVC are never stored. Only masked details (brand, last 4 digits, expiry) are saved.
+              For security, CVC is never stored. Card details are encoded before saving and masked details are shown here.
             </p>
           </form>
         </div>

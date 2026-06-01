@@ -6,7 +6,7 @@
   <meta name="description" content="GI Smartanalytics Portal — Smart analytics and compliance solutions for modern organisations.">
   <title><?= htmlspecialchars($pageTitle ?? 'GI Smartanalytics Portal') ?></title>
   <link rel="stylesheet" href="/assets/css/app.css">
-  <link rel="icon" type="image/svg+xml" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>⚖</text></svg>">
+  <link rel="icon" type="image/png" href="/assets/images/gi-logo.png">
 </head>
 <body>
 
@@ -14,7 +14,7 @@
 <nav class="public-nav">
   <div class="public-nav-inner">
     <a href="/" class="nav-logo">
-      <div class="nav-logo-icon">GI</div>
+      <?php include BASE_PATH . '/views/partials/brand-logo.php'; ?>
       <span>GI <span>Smartanalytics</span></span>
     </a>
     <div class="nav-links">
@@ -55,7 +55,7 @@ if ($flashError || $flashSuccess): ?>
   <div class="footer-inner">
     <div class="footer-brand">
       <div class="nav-logo">
-        <div class="nav-logo-icon">GI</div>
+        <?php include BASE_PATH . '/views/partials/brand-logo.php'; ?>
         <span>GI <span>Smartanalytics</span></span>
       </div>
       <p class="mt-2">Enterprise-grade governance, compliance, and analytics intelligence platform for modern organisations.</p>

@@ -107,6 +107,31 @@ $headSubtitle = match ($outcome) {
       <?= htmlspecialchars($message ?? '') ?>
     </p>
 
+    <?php if (!empty($paymentFeedback ?? [])): ?>
+      <div style="text-align:left; border:1px solid var(--border); border-radius: var(--radius); padding:1rem; margin:0 0 2rem; background:var(--card);">
+        <div style="font-size:0.8rem; font-weight:700; margin-bottom:0.75rem;">Payment confirmation</div>
+        <?php
+          $feedbackRows = [
+            'PayFast status' => $paymentFeedback['payfast_status'] ?? '',
+            'System status' => $paymentFeedback['system_status'] ?? $status ?? '',
+            'ITN response' => $paymentFeedback['http_status'] ?? '',
+            'Reference' => $paymentFeedback['merchant_reference'] ?? $providerRef ?? '',
+            'PayFast payment ID' => $paymentFeedback['payfast_payment_id'] ?? '',
+            'Gross amount' => !empty($paymentFeedback['amount_gross']) ? 'R' . number_format((float)$paymentFeedback['amount_gross'], 2) : '',
+            'Net amount' => !empty($paymentFeedback['amount_net']) ? 'R' . number_format((float)$paymentFeedback['amount_net'], 2) : '',
+          ];
+        ?>
+        <?php foreach ($feedbackRows as $label => $value): ?>
+          <?php if ((string)$value !== ''): ?>
+            <div style="display:flex; justify-content:space-between; gap:1rem; padding:0.35rem 0; font-size:0.82rem;">
+              <span style="color:var(--muted-foreground);"><?= htmlspecialchars($label) ?></span>
+              <strong style="text-align:right;"><?= htmlspecialchars((string)$value) ?></strong>
+            </div>
+          <?php endif; ?>
+        <?php endforeach; ?>
+      </div>
+    <?php endif; ?>
+
     <?php if ($outcome === 'success'): ?>
       <div style="display: flex; gap: 0.75rem; justify-content: center; flex-wrap: wrap;">
         <a href="/dashboard" class="btn btn-primary">Go to Dashboard</a>

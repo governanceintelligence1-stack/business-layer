@@ -161,8 +161,9 @@ function initModals() {
 }
 
 // ── Format numbers ────────────────────────────────────────────────────────────
-window.formatCredits = (n) =>
+window.formatTokens = (n) =>
   parseFloat(n).toLocaleString('en-ZA', { minimumFractionDigits: 0, maximumFractionDigits: 2 });
+window.formatCredits = window.formatTokens;
 
 // ── System telemetry / localStorage logger ───────────────────────────────────
 function initSystemTelemetry() {

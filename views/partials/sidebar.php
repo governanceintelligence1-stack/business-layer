@@ -1,7 +1,7 @@
   <!-- Sidebar -->
   <aside class="sidebar">
     <div class="sidebar-logo">
-      <div class="nav-logo-icon">GI</div>
+      <?php include BASE_PATH . '/views/partials/brand-logo.php'; ?>
       <span><span>SmartAnalytics</span></span>
     </div>
 
@@ -50,9 +50,9 @@
       </a>
 
       <div class="sidebar-section">Usage &amp; Billing</div>
-      <a href="/credits" class="sidebar-link <?= isActiveLink('/credits', $currentUri) ?>">
+      <a href="/tokens" class="sidebar-link <?= isActiveLink('/tokens', $currentUri) || isActiveLink('/credits', $currentUri) ?>">
         <svg fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><line x1="12" y1="1" x2="12" y2="23"/><path d="M17 5H9.5a3.5 3.5 0 000 7h5a3.5 3.5 0 010 7H6"/></svg>
-        Credits
+        Tokens
       </a>
       <a href="/api-keys" class="sidebar-link <?= isActiveLink('/api-keys', $currentUri) ?>">
         <svg fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path d="M21 2l-2 2m-7.61 7.61a5.5 5.5 0 11-7.778 7.778 5.5 5.5 0 017.777-7.777zm0 0L15.5 7.5m0 0l3 3L22 7l-3-3m-3.5 3.5L19 4"/></svg>

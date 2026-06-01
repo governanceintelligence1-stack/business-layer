@@ -9,37 +9,140 @@ class EntitlementService
 {
     private DB $db;
     private SubscriptionService $subscriptionService;
-    private CreditService $creditService;
+    private TokenService $tokenService;
     private ApiKeyService $apiKeyService;
+    private ProductService $productService;
 
     public function __construct()
     {
         $this->db                  = DB::getInstance();
         $this->subscriptionService = new SubscriptionService();
-        $this->creditService       = new CreditService();
+        $this->tokenService        = new TokenService();
         $this->apiKeyService       = new ApiKeyService();
+        $this->productService      = new ProductService();
+    }
+
+    /**
+     * Minimum monthly tokens so every active product can be used at least once.
+     */
+    public function getMinimumMonthlyTokens(): float
+    {
+        $row = $this->db->fetch(
+            "SELECT COALESCE(SUM(credit_cost), 0) AS total
+             FROM products
+             WHERE status = 'active'"
+        );
+
+        return (float) ($row['total'] ?? 0);
+    }
+
+    public function hasActiveSubscription(string $orgId): bool
+    {
+        return $this->subscriptionService->getActive($orgId) !== false;
+    }
+
+    /** Per-use token cost from products.credit_cost (DB column name unchanged). */
+    public function getProductTokenCost(string $productSlug): ?float
+    {
+        $product = $this->productService->findBySlug($productSlug);
+        if (!$product) {
+            return null;
+        }
+
+        return (float) ($product['credit_cost'] ?? 0);
+    }
+
+    /** @deprecated Use getProductTokenCost() */
+    public function getProductCreditCost(string $productSlug): ?float
+    {
+        return $this->getProductTokenCost($productSlug);
     }
 
     public function checkAccess(string $orgId, string $productSlug): bool
     {
-        $sub = $this->subscriptionService->getActive($orgId);
-        if (!$sub) {
+        return $this->evaluateProductAccess($orgId, $productSlug)['can_use'];
+    }
+
+    /**
+     * @return array{
+     *   can_use: bool,
+     *   reason: string,
+     *   has_subscription: bool,
+     *   token_cost: float|null,
+     *   available_balance: float,
+     *   balance: float,
+     *   reserved_balance: float
+     * }
+     */
+    public function evaluateProductAccess(string $orgId, string $productSlug): array
+    {
+        $summary   = $this->tokenService->getAccountSummary($orgId);
+        $available = $summary['available'];
+        $balance   = $summary['balance'];
+        $reserved  = $summary['reserved'];
+        $hasSub    = $this->hasActiveSubscription($orgId);
+        $cost      = $this->getProductTokenCost($productSlug);
+
+        if ($cost === null) {
+            return [
+                'can_use'           => false,
+                'reason'            => 'Unknown product',
+                'has_subscription'  => $hasSub,
+                'token_cost'        => null,
+                'available_balance' => $available,
+                'balance'           => $balance,
+                'reserved_balance'  => $reserved,
+            ];
+        }
+
+        if (!$hasSub) {
+            return [
+                'can_use'           => false,
+                'reason'            => 'No active subscription',
+                'has_subscription'  => false,
+                'token_cost'        => $cost,
+                'available_balance' => $available,
+                'balance'           => $balance,
+                'reserved_balance'  => $reserved,
+            ];
+        }
+
+        if ($available < $cost) {
+            return [
+                'can_use'           => false,
+                'reason'            => 'Insufficient tokens',
+                'has_subscription'  => true,
+                'token_cost'        => $cost,
+                'available_balance' => $available,
+                'balance'           => $balance,
+                'reserved_balance'  => $reserved,
+            ];
+        }
+
+        return [
+            'can_use'           => true,
+            'reason'            => 'OK',
+            'has_subscription'  => true,
+            'token_cost'        => $cost,
+            'available_balance' => $available,
+            'balance'           => $balance,
+            'reserved_balance'  => $reserved,
+        ];
+    }
+
+    public function checkTokens(string $orgId, float $requiredTokens): bool
+    {
+        if (!$this->hasActiveSubscription($orgId)) {
             return false;
         }
 
-        $result = $this->db->fetch(
-            'SELECT pp.id FROM plan_products pp
-             INNER JOIN products p ON pp.product_id = p.id
-             WHERE pp.plan_id = :plan_id AND p.slug = :slug',
-            ['plan_id' => $sub['plan_id'], 'slug' => $productSlug]
-        );
-
-        return $result !== false;
+        return $this->tokenService->getAvailableBalance($orgId) >= $requiredTokens;
     }
 
+    /** @deprecated Use checkTokens() */
     public function checkCredit(string $orgId, float $requiredCredits): bool
     {
-        return $this->creditService->getAvailableBalance($orgId) >= $requiredCredits;
+        return $this->checkTokens($orgId, $requiredCredits);
     }
 
     public function checkApiKey(string $apiKey, string $productSlug): bool
@@ -62,30 +165,68 @@ class EntitlementService
         return $this->checkAccess($key['organisation_id'], $productSlug);
     }
 
-    public function authorizeJob(string $orgId, string $productSlug, float $estimatedCredits): array
+    public function authorizeJob(string $orgId, string $productSlug, float $estimatedTokens): array
     {
-        if (!$this->checkAccess($orgId, $productSlug)) {
+        $evaluation = $this->evaluateProductAccess($orgId, $productSlug);
+        $balance    = $evaluation['balance'];
+        $available  = $evaluation['available_balance'];
+        $reserved   = $evaluation['reserved_balance'];
+        $cost       = $evaluation['token_cost'];
+
+        if ($cost === null) {
             return [
-                'authorized'    => false,
-                'reason'        => 'No active subscription for this product',
-                'creditBalance' => $this->creditService->getBalance($orgId),
+                'authorized'           => false,
+                'reason'               => 'Unknown product',
+                'tokenBalance'         => $balance,
+                'token_cost'           => null,
+                'available'            => $available,
+                'reserved'             => $reserved,
+                'creditBalance'        => $balance,
+                'credit_cost'          => null,
+                'requires_reservation' => false,
             ];
         }
 
-        $balance = $this->creditService->getAvailableBalance($orgId);
+        $required = $estimatedTokens > 0 ? $estimatedTokens : $cost;
 
-        if ($balance < $estimatedCredits) {
+        if (!$evaluation['has_subscription']) {
             return [
-                'authorized'    => false,
-                'reason'        => 'Insufficient credits',
-                'creditBalance' => $balance,
+                'authorized'           => false,
+                'reason'               => 'No active subscription',
+                'tokenBalance'         => $balance,
+                'token_cost'           => $cost,
+                'available'            => $available,
+                'reserved'             => $reserved,
+                'creditBalance'        => $balance,
+                'credit_cost'          => $cost,
+                'requires_reservation' => false,
+            ];
+        }
+
+        if ($available < $required) {
+            return [
+                'authorized'           => false,
+                'reason'               => 'Insufficient tokens',
+                'tokenBalance'         => $balance,
+                'token_cost'           => $cost,
+                'available'            => $available,
+                'reserved'             => $reserved,
+                'creditBalance'        => $balance,
+                'credit_cost'          => $cost,
+                'requires_reservation' => false,
             ];
         }
 
         return [
-            'authorized'    => true,
-            'reason'        => 'OK',
-            'creditBalance' => $balance,
+            'authorized'           => true,
+            'reason'               => 'OK',
+            'tokenBalance'         => $balance,
+            'token_cost'           => $cost,
+            'available'            => $available,
+            'reserved'             => $reserved,
+            'creditBalance'        => $balance,
+            'credit_cost'          => $cost,
+            'requires_reservation' => true,
         ];
     }
 }

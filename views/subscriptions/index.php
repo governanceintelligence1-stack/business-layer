@@ -32,7 +32,7 @@
       <div style="color:var(--accent);font-weight:700;">R<?= number_format((float)($currentSub['price_monthly'] ?? 0), 2) ?></div>
     </div>
     <div>
-      <div style="font-size:.8rem;color:var(--text-muted);">Credits / Month</div>
+      <div style="font-size:.8rem;color:var(--text-muted);">Tokens / Month</div>
       <div><?= number_format((int)($currentSub['credits_monthly'] ?? 0)) ?></div>
     </div>
     <div>
@@ -80,7 +80,8 @@
         </tr>
       </thead>
       <tbody>
-        <?php foreach ($allSubs as $sub): ?>
+        <?php $displaySubs = array_slice($allSubs, 0, 5); ?>
+        <?php foreach ($displaySubs as $sub): ?>
         <tr>
           <td><?= htmlspecialchars($sub['plan_name']) ?></td>
           <td><?= htmlspecialchars(ucfirst($sub['billing_cycle'] ?? '')) ?></td>
@@ -95,6 +96,10 @@
         <?php endforeach; ?>
       </tbody>
     </table>
+  </div>
+  <div style="margin-top:0.75rem; display:flex; justify-content:space-between; align-items:center;">
+    <a href="/subscriptions/history" class="btn">View all subscriptions</a>
+    <a href="/subscriptions/transactions" class="btn">View transactions</a>
   </div>
 </div>
 <?php endif; ?>

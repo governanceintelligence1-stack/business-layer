@@ -34,7 +34,7 @@
         <div class="product-name"><?= htmlspecialchars($product['name']) ?></div>
         <div class="product-desc"><?= htmlspecialchars($product['description'] ?? '') ?></div>
         <?php if (!empty($product['credit_cost'])): ?>
-          <div class="product-credit">⚡ <?= number_format((float)$product['credit_cost'], 2) ?> credits / request</div>
+          <div class="product-credit">⚡ <?= number_format((float)$product['credit_cost'], 2) ?> tokens / request</div>
         <?php endif; ?>
       </div>
       <?php endforeach; ?>
@@ -71,7 +71,7 @@
     <div class="section-header">
       <div class="section-label">Pricing</div>
       <h2 class="section-title">Transparent Pricing</h2>
-      <p class="section-sub">Credit-based usage model — pay for what you use. No hidden fees.</p>
+      <p class="section-sub">Token-based usage model — pay for what you use. No hidden fees.</p>
     </div>
 
     <?php if (!empty($plans)): ?>
@@ -90,7 +90,7 @@
           <div class="plan-amount">
             <sup>R</sup><?= number_format((float)($plan['price_monthly'] ?? 0), 0) ?>
           </div>
-          <div class="plan-period">per month · <?= number_format((int)($plan['credits_monthly'] ?? 0)) ?> credits included</div>
+          <div class="plan-period">per month · <?= number_format((int)($plan['credits_monthly'] ?? 0)) ?> tokens included</div>
         </div>
         <?php if (!empty($features)): ?>
         <ul class="plan-features">
@@ -111,7 +111,7 @@
         <div class="plan-desc">Perfect for small teams getting started.</div>
         <div class="plan-price">
           <div class="plan-amount"><sup>R</sup>1 500</div>
-          <div class="plan-period">per month · 5 000 credits included</div>
+          <div class="plan-period">per month · 5 000 tokens included</div>
         </div>
         <ul class="plan-features">
           <li>Up to 5 users</li><li>3 products</li><li>API access</li><li>Email support</li>
@@ -123,7 +123,7 @@
         <div class="plan-desc">For growing organisations needing more power.</div>
         <div class="plan-price">
           <div class="plan-amount"><sup>R</sup>4 500</div>
-          <div class="plan-period">per month · 20 000 credits included</div>
+          <div class="plan-period">per month · 20 000 tokens included</div>
         </div>
         <ul class="plan-features">
           <li>Up to 25 users</li><li>All products</li><li>Full API access</li><li>Priority support</li><li>Advanced analytics</li>
@@ -135,7 +135,7 @@
         <div class="plan-desc">Custom solutions for large organisations.</div>
         <div class="plan-price">
           <div class="plan-amount"><sup>R</sup>12 000</div>
-          <div class="plan-period">per month · 100 000 credits included</div>
+          <div class="plan-period">per month · 100 000 tokens included</div>
         </div>
         <ul class="plan-features">
           <li>Unlimited users</li><li>All products</li><li>Dedicated API</li><li>SLA support</li><li>Custom integrations</li>
@@ -189,8 +189,8 @@
       <div class="security-item">
         <div class="security-icon">⚡</div>
         <div>
-          <h4>Credit Integrity</h4>
-          <p>Transactional credit operations with row-level locking prevent race conditions.</p>
+          <h4>Token Integrity</h4>
+          <p>Transactional token operations with row-level locking prevent race conditions.</p>
         </div>
       </div>
       <div class="security-item">

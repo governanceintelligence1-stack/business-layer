@@ -9,13 +9,13 @@ class WebhookService
 {
     private DB $db;
     private SubscriptionService $subscriptionService;
-    private CreditService $creditService;
+    private TokenService $tokenService;
 
     public function __construct()
     {
         $this->db                  = DB::getInstance();
         $this->subscriptionService = new SubscriptionService();
-        $this->creditService       = new CreditService();
+        $this->tokenService        = new TokenService();
     }
 
     public function handle(string $payload, string $signature): bool
@@ -45,7 +45,12 @@ class WebhookService
             return false;
         }
 
-        $this->creditService->addCredits($orgId, $amount, 'Payment received', 'payment', $refId);
+        if ($refId !== '' && $this->tokenService->hasLedgerEntry($orgId, 'payment', $refId)) {
+            return true;
+        }
+
+        $this->tokenService->addTokens($orgId, $amount, 'Payment received', 'payment', $refId);
+
         return true;
     }
 

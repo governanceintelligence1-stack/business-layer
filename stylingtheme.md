@@ -1,5 +1,287 @@
-# style.md — Governance Intelligence UI System
+# stylingtheme.md — Governance Intelligence UI System
+
 > Shadcn/ui-inspired · sizing verified against source · works for new and existing projects
+
+**Contents**
+
+1. [System reference (as implemented)](#system-reference-as-implemented) — assets, icons, components, JS behaviors
+2. [Migration guide (Steps 1–12)](#step-1--design-tokens) — incremental token and component alignment
+
+---
+
+## System reference (as implemented)
+
+This section documents what the **business-layer** portal actually uses today. The migration steps below describe the target shadcn-aligned system; use this section when building or reviewing UI in this repo.
+
+### Assets and layouts
+
+| Asset | Path | Used by |
+|-------|------|---------|
+| Global stylesheet | `public/assets/css/app.css` | All pages via layouts |
+| App JavaScript | `public/assets/js/app.js` | `views/layouts/main.php`, `views/layouts/public.php` |
+| Tailwind build (unused in layouts) | `public/assets/css/flux.css` | Not linked in production layouts — do not rely on it |
+| Authenticated shell | `views/layouts/main.php` | Dashboard, billing, credits, org, etc. |
+| Public / marketing shell | `views/layouts/public.php` | Home, auth register |
+| Sidebar partial | `views/partials/sidebar.php` | Included from `main.php` |
+
+**Font:** Google Fonts **Roboto** (`300–700`), loaded in `app.css`. Dashboard and Plans pages also declare **Inter** in page-level `:root` stacks. Target stack for new work: `Inter, Roboto, ui-sans-serif, system-ui, sans-serif`.
+
+**Brand mark:** `.nav-logo-icon` — 36×36px square, `GI` initials, used in sidebar, auth, public nav, footer.
+
+---
+
+### Icon library
+
+The portal does **not** load Font Awesome, Bootstrap Icons, Heroicons, or a Lucide npm package. Icons come from three patterns:
+
+#### 1. Lucide (inline SVG) — navigation and UI chrome
+
+Stroke icons copied inline from [Lucide](https://lucide.dev). Conventions:
+
+```html
+<svg fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24" aria-hidden="true">
+  <!-- path(s) -->
+</svg>
+```
+
+| Location | Lucide icon (approx.) | Size / color |
+|----------|----------------------|--------------|
+| Sidebar → Dashboard | `layout-dashboard` | 16×16 via `.sidebar-link svg`; green `#16a34a` |
+| Sidebar → Organisation | `building-2` | same |
+| Sidebar → Products | `activity` | same |
+| Sidebar → Plans | `clipboard-check` | same |
+| Sidebar → Subscriptions | `clock` | same |
+| Sidebar → Credits | `dollar-sign` | same |
+| Sidebar → API Keys | `key` | same |
+| Sidebar → Billing | `credit-card` | same |
+| Sidebar → Products chevron | `chevron-right` | 14×14 `.sidebar-chevron`; rotates 90° when `.sidebar-group.open` |
+| Billing back button | `chevron-left` | 16×16 inline in `views/billing/index.php` |
+| Checkout return/cancel | `check-circle`, `x-circle`, `clock`, `alert-triangle` | 24×24; semantic stroke colors |
+
+**Rules for new Lucide icons**
+
+- Always `fill="none"`, `stroke="currentColor"`, `stroke-width="2"`, `viewBox="0 0 24 24"`.
+- Prefer `currentColor` so parent text/color rules apply (sidebar uses green accent on links).
+- Add `aria-hidden="true"` when decorative; pair with visible text.
+- Do not add a CDN script — copy the SVG markup from lucide.dev.
+
+#### 2. Emoji — marketing, empty states, flash affordances
+
+Used where a quick semantic glyph is enough (no stroke consistency required).
+
+| Context | Examples |
+|---------|----------|
+| Empty states | `empty-state-icon`: 🔑 💳 📦 |
+| Home / security | `security-icon`, `product-icon`: 🔐 🔒 📝 🛡 ⚡ 🌍 📊 |
+| Flash messages | ⚠ error, ✓ success (in layouts) |
+| Favicon | ⚖ (inline data-URI SVG in layout `<head>`) |
+| Copy feedback | `✓ Copied` in `app.js` |
+
+#### 3. Text / CSS — logos and stat affordances
+
+- `.nav-logo-icon` — text `GI`, not an icon font.
+- `.stat-icon` (dashboard inline styles) — small bordered box, often a letter or short label.
+- `.badge-dot` (billing page) — CSS circle beside status text.
+- Plan feature lists use `::before { content: '✓'; }` in `app.css`.
+
+---
+
+### Production design tokens (`app.css` `:root`)
+
+Current global tokens (may differ from the migration target in Step 1):
+
+```css
+--bg, --bg-card, --bg-sidebar, --border
+--accent, --accent-dim, --text, --text-muted, --text-dim
+--danger, --success, --warning
+--radius (10px), --shadow, --sidebar-w (268px), --topbar-h (64px)
+```
+
+Several views define a **second** shadcn-style block inline (`--background`, `--foreground`, `--card`, `--muted-foreground`, `--primary`, etc.) on Dashboard, Plans, and Billing. Prefer consolidating into `app.css` over adding more page-level `:root` blocks.
+
+---
+
+### Component catalog
+
+Classes below are defined in `app.css` unless noted as page-local.
+
+#### Layout and shell
+
+| Component | Classes | Notes |
+|-----------|---------|-------|
+| App shell | `.app-layout`, `.main-content` | Flex; sidebar fixed, main offset by `--sidebar-w` |
+| Sidebar | `.sidebar`, `.sidebar-logo`, `.sidebar-nav`, `.sidebar-section`, `.sidebar-link`, `.sidebar-link-toggle`, `.sidebar-submenu`, `.sidebar-sub-link`, `.sidebar-footer`, `.sidebar-user`, `.sidebar-avatar`, `.sidebar-logout-btn` | Collapsible products group: `.sidebar-group.open` |
+| Top bar | `.topbar`, `.topbar-title`, `.topbar-actions` | Defined; not all pages render a topbar |
+| Page chrome | `.page-content`, `.page-header`, `.page-title`, `.page-subtitle` | Many pages use sticky/fixed header variants in inline CSS |
+| Dashboard shell | `.dashboard-shell` | Max-width 1180px centered content |
+| Page eyebrow | `.page-eyebrow` | Pill label above title (Finance, Checkout, Dashboard) |
+| Page header meta | `.page-header-meta`, `.page-header-main`, `.page-header-actions` | Dashboard / billing / checkout |
+| Mobile overlay | `#sidebar-overlay` | Inline + `.sidebar.open` at ≤768px |
+
+#### Public / marketing (`views/home/index.php`, `public.php`)
+
+| Component | Classes |
+|-----------|---------|
+| Sticky nav | `.public-nav`, `.public-nav-inner`, `.nav-logo`, `.nav-links` |
+| Hero | `.hero`, `.hero-badge`, `.hero-sub`, `.hero-cta` |
+| Section | `.section`, `.section-inner`, `.section-header`, `.section-label`, `.section-title`, `.section-sub`, `.divider` |
+| Product grid | `.product-cards`, `.product-card`, `.product-icon`, `.product-name`, `.product-desc`, `.product-credit`, `.has-access` |
+| Pricing | `.pricing-cards`, `.pricing-card`, `.featured`, `.plan-name`, `.plan-price`, `.plan-amount`, `.plan-period`, `.plan-features` |
+| Security | `.security-grid`, `.security-item`, `.security-icon` |
+| Footer | `footer`, `.footer-inner`, `.footer-brand`, `.footer-col`, `.footer-bottom` |
+
+#### Auth (`views/auth/`)
+
+| Component | Classes | File |
+|-----------|---------|------|
+| Auth layout | `.auth-wrapper`, `.auth-container`, `.auth-box`, `.auth-logo`, `.auth-title`, `.auth-sub`, `.auth-divider`, `.auth-footer` | `app.css` + `login-form.php` / `register-form.php` |
+| Login actions | `.login-note`, `.login-actions` | `login-form.php` |
+| Register wizard | `.register-steps`, `.register-step-pill`, `.register-step`, `.register-actions` | `register-form.php` |
+
+#### Buttons
+
+| Variant | Class |
+|---------|-------|
+| Base | `.btn` |
+| Primary / secondary / danger / ghost | `.btn-primary`, `.btn-secondary`, `.btn-danger`, `.btn-ghost` |
+| Sizes | `.btn-sm`, `.btn-lg` |
+| Width | `.w-100` |
+
+#### Forms
+
+| Component | Classes |
+|-----------|---------|
+| Field group | `.form-group`, `.form-label`, `.form-control` |
+| Grid rows | `.form-row`, `.form-row-2`, `.form-row-3` |
+| Checkout inputs | `.form-input` (checkout-specific in `app.css`) |
+| Billing inputs (page-local) | `.billing-input`, `.billing-form-grid` in `billing/index.php` |
+
+#### Cards and stats
+
+| Component | Classes |
+|-----------|---------|
+| Card | `.card`, `.card-header`, `.card-title`, `.card-description` (billing) |
+| Grids | `.card-grid`, `.card-grid-2`, `.card-grid-3`, `.card-grid-4` |
+| Stat card | `.stat-card`, `.stat-label`, `.stat-value`, `.stat-sub` |
+| Dashboard stat extras | `.stat-card-top`, `.stat-icon`, `.stat-value-sm` | Inline in `dashboard/index.php` |
+| Bento grid | `.bento-grid`, `.span-2`, `.span-3`, `.span-row-2`, `.span-row-3` |
+| Quick actions | `.action-list`, `.action-item`, `.action-left`, `.action-text`, `.action-title`, `.action-arrow` |
+
+#### Data display
+
+| Component | Classes |
+|-----------|---------|
+| Table wrapper | `.table-wrap` |
+| Table | `table`, `th`, `td` (no `.table` class) |
+| Badge | `.badge`, `.badge-active`, `.badge-revoked`, `.badge-pending`, `.badge-gold` |
+| Badge dot (billing) | `.badge-dot` | Page-local in `billing/index.php` |
+| Empty state | `.empty-state`, `.empty-state-icon` |
+| Code / API key | `.code-block` |
+
+#### Feedback
+
+| Component | Classes |
+|-----------|---------|
+| Alert | `.alert`, `.alert-success`, `.alert-error`, `.alert-warning`, `.alert-info` |
+| Close control | `.alert-close` (styled inline in layouts) |
+| Auto-dismiss | `data-auto-dismiss="5000"` on alert |
+
+#### Overlays and navigation
+
+| Component | Classes / attributes |
+|-----------|---------------------|
+| Modal | `.modal-overlay`, `.modal`, `.modal-header`, `.modal-close` |
+| Open/close | `data-modal-open="id"`, `data-modal-close`, `#logout-confirm-modal` |
+| Tabs | `.tabs`, `.tab-btn`, `.tab-panel`, wrapper `data-tabs`, `data-tab`, `data-panel` |
+| Confirm | `data-confirm="message"` on buttons/links |
+| Copy | `data-copy="#selector"` |
+
+#### Checkout and billing
+
+| Component | Classes |
+|-----------|---------|
+| Checkout layout | `.checkout-layout`, `.checkout-panel`, `.checkout-section-title`, `.checkout-selected-card`, `.checkout-change-plan-btn`, `.checkout-plan-note`, `.checkout-price-inline`, `.checkout-actions` |
+| Order summary | `.order-summary-box`, `.order-row`, `.order-row.total` |
+| Billing cycle | `.billing-cycle-grid`, `.billing-cycle-option`, `.billing-title`, `.billing-meta` |
+| Saved card | `.saved-method`, `.saved-method-meta`, `.payment-divider`, `.new-card-fields`, `.new-card-grid` |
+| Billing page shell | `.billing-shell`, `.payment-method-item`, `.add-card-panel` | `billing/index.php` |
+
+#### Plans page (inline)
+
+| Component | Classes |
+|-----------|---------|
+| Shell | `.plans-shell` |
+| Grid | `.pricing-grid`, `.plan-card`, `.plan-card.featured` | Overrides marketing `.pricing-card` patterns |
+
+#### Updates page (inline)
+
+| Component | Classes |
+|-----------|---------|
+| Layout | `.updates-shell`, `.updates-main`, `.updates-side` |
+| Articles | `.updates-article`, `.updates-meta`, `.updates-search` |
+| Nav | `.updates-ref-list`, `.updates-ref-link`, `.updates-side-list` |
+
+#### Utilities (`app.css`)
+
+`.text-accent`, `.text-muted`, `.text-danger`, `.text-success`, `.text-center`, `.text-right`, `.mt-1`–`.mt-4`, `.mb-1`–`.mb-4`, `.d-flex`, `.align-center`, `.justify-between`, `.gap-1`, `.gap-2`, `.hidden`
+
+---
+
+### View → component map
+
+| View | Primary components |
+|------|-------------------|
+| `home/index.php` | Hero, section, product-card, pricing-card, security-grid, footer |
+| `auth/login.php`, `login-form.php` | Auth box, SSO CTA button |
+| `auth/register.php`, `register-form.php` | Auth box, multi-step register pills |
+| `dashboard/index.php` | Fixed page-header, page-eyebrow, bento-grid, stat-card, action-item, card (inline theme) |
+| `partials/sidebar.php` | Sidebar, Lucide SVGs, logout modal trigger |
+| `organisation/index.php` | Page header, tabs, form-control, card |
+| `products/index.php`, `component.php` | Page header, product-card / workspace card, badges |
+| `plans/index.php` | plans-shell, pricing-grid (inline) |
+| `subscriptions/index.php`, `history.php`, `transactions.php` | Page header, card, table-wrap, badges |
+| `credits/index.php`, `history.php` | Page header, stat-card, card-grid, table |
+| `billing/index.php`, `history.php` | billing-shell, stat-card, table, payment-method-item, modal patterns |
+| `api-keys/index.php` | Page header, table, modal, code-block, data-copy |
+| `checkout/index.php` | checkout-layout, billing-cycle-option, form-input |
+| `checkout/return.php`, `cancel.php` | dashboard-shell, status SVGs, buttons |
+| `profile/index.php` | Page header, card, form-control (readonly) |
+| `updates/index.php` | updates-shell, card, search input |
+
+---
+
+### JavaScript behaviors (`public/assets/js/app.js`)
+
+| Init | Selector / API | Behavior |
+|------|----------------|----------|
+| `initSidebarSubmenus` | `[data-sidebar-group]`, `[data-sidebar-toggle]` | Toggle `.open`, `aria-expanded` |
+| `initMobileSidebar` | `#sidebar-toggle`, `.sidebar`, `#sidebar-overlay` | Slide sidebar on small screens |
+| `initTabs` | `[data-tabs]`, `.tab-btn`, `.tab-panel` | Show panel matching `data-tab` |
+| `initModals` | `[data-modal-open]`, `.modal-close`, `[data-modal-close]` | Show/hide `.modal-overlay` |
+| `initFlashDismiss` | `.alert[data-auto-dismiss]`, `.alert-close` | Fade and remove alerts |
+| `initCopyButtons` | `[data-copy]` | Clipboard copy + “✓ Copied” feedback |
+| `initConfirmations` | `[data-confirm]` | `confirm()` before submit/navigation |
+| `initSystemTelemetry` | `window.GI_LOG`, `window.GI_LOGS` | localStorage event log (dev/diagnostics) |
+| `window.formatCredits` | — | ZA locale number formatting |
+
+Global context: `window.__GI_CONTEXT.user` injected from `main.php` / `public.php`.
+
+---
+
+### Page-level CSS overrides (consolidate over time)
+
+These files embed large `<style>` blocks that duplicate or extend `app.css`:
+
+| File | Notable overrides |
+|------|-------------------|
+| `views/dashboard/index.php` | Full shadcn `:root`, fixed `.page-header`, bento/stat/action styles |
+| `views/plans/index.php` | shadcn `:root`, `.plans-shell`, `.pricing-grid`, fixed header |
+| `views/billing/index.php` | `.billing-shell`, `.badge-dot`, `.payment-method-item`, card/stat tweaks |
+| `views/auth/components/login-form.php` | Compact auth viewport |
+| `views/auth/components/register-form.php` | Register step wizard |
+| `views/updates/index.php` | `.updates-*` layout |
+
+When adding UI, prefer new rules in `app.css` and shared classes above instead of another inline block.
 
 ---
 
@@ -493,3 +775,17 @@ Input / Select  → height: 2.25rem (36px) | padding: 0 0.75rem | border-radius:
 Card            → border-radius: 0.625rem (10px)
 Modal / Sheet   → border-radius: 0.875rem (14px)
 ```
+
+---
+
+## Appendix — Icon quick reference
+
+| Need | Use |
+|------|-----|
+| Sidebar / buttons / tables | **Lucide** — inline SVG from [lucide.dev](https://lucide.dev), `stroke="currentColor"`, 16px or 24px |
+| Empty state / marketing tile | **Emoji** in `.empty-state-icon` or `.product-icon` |
+| App / favicon mark | **`.nav-logo-icon`** text `GI` |
+| Destructive confirm | `data-confirm` (no icon required) |
+| Success copy | `✓` character in JS feedback |
+
+**Do not introduce** a second icon library (Font Awesome, Material Icons, etc.) without aligning this doc and `app.css` first.

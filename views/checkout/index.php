@@ -68,6 +68,7 @@ if ($defaultMethodId === '' && !empty($paymentMethods[0]['id'])) {
   </div>
 
   <form method="post" action="/checkout/pay" class="checkout-layout">
+    <input type="hidden" name="idempotency_key" value="<?= htmlspecialchars((string)($checkoutIdempotencyKey ?? ''), ENT_QUOTES, 'UTF-8') ?>">
     <input type="hidden" name="plan_id" value="<?= htmlspecialchars((string)($plan['id'] ?? '')) ?>">
     <input type="hidden" name="plan_name" value="<?= htmlspecialchars($planName) ?>">
 
@@ -84,7 +85,7 @@ if ($defaultMethodId === '' && !empty($paymentMethods[0]['id'])) {
 
         <div class="checkout-price-inline">
           <strong>R<?= number_format($monthly, 0) ?></strong>
-          per month · <?= number_format($credits) ?> credits included
+          per month · <?= number_format($credits) ?> tokens included
         </div>
 
         <?php if (!empty($features)): ?>
@@ -132,13 +133,18 @@ if ($defaultMethodId === '' && !empty($paymentMethods[0]['id'])) {
         </div>
 
         <div class="order-row">
-          <span>Monthly credits</span>
-          <span><?= number_format($credits) ?></span>
+          <span>Monthly tokens</span>
+          <span id="monthly-tokens-value"><?= number_format($credits) ?></span>
         </div>
 
         <div class="order-row">
           <span>Billing cycle</span>
           <span id="billing-cycle-label">Monthly</span>
+        </div>
+
+        <div class="order-row order-row-annual-tokens" id="annual-tokens-row" style="display: none;">
+          <span>Total tokens</span>
+          <strong id="annual-tokens-total">0</strong>
         </div>
 
         <div class="order-row total">
@@ -229,6 +235,17 @@ if ($defaultMethodId === '' && !empty($paymentMethods[0]['id'])) {
 
   const monthlyAmount = <?= json_encode(number_format($monthly, 2, '.', '')) ?>;
   const annualAmount = <?= json_encode(number_format($annual, 2, '.', '')) ?>;
+  const monthlyTokensEl = document.getElementById('monthly-tokens-value');
+  const annualTokensRow = document.getElementById('annual-tokens-row');
+  const annualTokensTotal = document.getElementById('annual-tokens-total');
+  function parseMonthlyTokens() {
+    if (!monthlyTokensEl) {
+      return 0;
+    }
+    const raw = monthlyTokensEl.textContent.replace(/,/g, '').trim();
+    const parsed = parseInt(raw, 10);
+    return Number.isFinite(parsed) ? parsed : 0;
+  }
 
   const paymentRadios = document.querySelectorAll('input[name="payment_method_choice"]');
   const newCardFields = document.getElementById('new-card-fields');
@@ -243,6 +260,15 @@ if ($defaultMethodId === '' && !empty($paymentMethods[0]['id'])) {
 
     if (billingCycleLabel) {
       billingCycleLabel.textContent = isAnnual ? 'Annual' : 'Monthly';
+    }
+
+    if (annualTokensRow) {
+      annualTokensRow.style.display = isAnnual ? 'flex' : 'none';
+    }
+
+    if (isAnnual && annualTokensTotal) {
+      const monthly = parseMonthlyTokens();
+      annualTokensTotal.textContent = (monthly * 12).toLocaleString('en-ZA');
     }
   }
 

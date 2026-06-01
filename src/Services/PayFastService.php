@@ -456,7 +456,10 @@ final class PayFastService
     }
 
     /**
-     * Full ITN replay for PayFast /eng/query/validate (includes signature).
+     * ITN replay for PayFast /eng/query/validate.
+     *
+     * PayFast expects the received fields to be posted back without the
+     * signature field; signature validation is performed separately.
      *
      * @param array<string, string> $payload
      */
@@ -464,6 +467,9 @@ final class PayFastService
     {
         $paramString = '';
         foreach ($payload as $key => $val) {
+            if ($key === 'signature') {
+                continue;
+            }
             if ($val === null) {
                 continue;
             }
@@ -515,9 +521,13 @@ final class PayFastService
 
     private function isServerValidationSkippedByEnv(): bool
     {
-        return filter_var(
-            self::envRaw('PAYFAST_ITN_SKIP_SERVER_VALIDATION') ?? 'false',
-            FILTER_VALIDATE_BOOLEAN
-        );
+        $configured = self::envRaw('PAYFAST_ITN_SKIP_SERVER_VALIDATION');
+        if ($configured !== null && trim($configured) !== '') {
+            return filter_var($configured, FILTER_VALIDATE_BOOLEAN);
+        }
+
+        // Local sandbox testing through ngrok often cannot satisfy PayFast's
+        // server replay check reliably. Keep live payments strict by default.
+        return $this->sandbox && $this->isIpValidationSkippedByEnv();
     }
 }

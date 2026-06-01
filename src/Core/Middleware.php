@@ -62,7 +62,7 @@ class Middleware
         }
     }
 
-    private static function isAuthBypassed(): bool
+    public static function isAuthBypassed(): bool
     {
         $value = strtolower(trim((string) ($_ENV['AUTH_BYPASS'] ?? 'false')));
         return in_array($value, ['1', 'true', 'yes', 'on'], true);

@@ -8,6 +8,7 @@ use GI\Core\Session;
 use GI\Core\View;
 use GI\Services\SubscriptionService;
 use GI\Services\PlanService;
+use GI\Services\PaymentTransactionService;
 
 class SubscriptionController
 {
@@ -35,6 +36,50 @@ class SubscriptionController
             'user'       => $user,
             'currentSub' => $currentSub,
             'allSubs'    => $allSubs,
+        ]);
+    }
+
+    public function transactions(): void
+    {
+        Middleware::auth();
+        $user  = Session::get('user');
+        $orgId = $user['organisation_id'] ?? '';
+
+        $transactions = [];
+        try {
+            if (!empty($orgId)) {
+                $pt = new PaymentTransactionService();
+                $transactions = $pt->getRecentForOrganisation((string)$orgId, 50, 0);
+            }
+        } catch (\Throwable $e) {
+            // ignore
+        }
+
+        View::render('subscriptions/transactions', [
+            'user' => $user,
+            'transactions' => $transactions,
+        ]);
+    }
+
+    public function history(): void
+    {
+        Middleware::auth();
+        $user  = Session::get('user');
+        $orgId = $user['organisation_id'] ?? '';
+
+        $allSubs = [];
+        try {
+            if (!empty($orgId)) {
+                $subService = new SubscriptionService();
+                $allSubs = $subService->getForOrganisation($orgId);
+            }
+        } catch (\Throwable $e) {
+            // ignore
+        }
+
+        View::render('subscriptions/history', [
+            'user' => $user,
+            'allSubs' => $allSubs,
         ]);
     }
 

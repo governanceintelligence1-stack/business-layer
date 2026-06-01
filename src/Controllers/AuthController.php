@@ -9,13 +9,19 @@ use GI\Core\View;
 use GI\Core\Middleware;
 use GI\Services\UserService;
 use GI\Services\OrganisationService;
-use GI\Services\CreditService;
+use GI\Services\TokenService;
 
 class AuthController
 {
     public function login(): void
     {
         Middleware::guest();
+
+        if (Middleware::isAuthBypassed()) {
+            header('Location: /dashboard');
+            exit;
+        }
+
         $auth     = new Auth();
         $loginUrl = $auth->getLoginUrl();
         header('Location: ' . $loginUrl);
@@ -102,7 +108,7 @@ class AuthController
         try {
             $orgService    = new OrganisationService();
             $userService   = new UserService();
-            $creditService = new CreditService();
+            $tokenService = new TokenService();
 
             $orgId = $orgService->create([
                 'name'         => $orgName,
@@ -124,7 +130,7 @@ class AuthController
                 'status'           => 'invited',
             ]);
 
-            $creditService->getOrCreateAccount($orgId);
+            $tokenService->getOrCreateAccount($orgId);
 
             Session::flash('success', 'Registration successful. Please log in via Keycloak.');
             header('Location: /auth/login');

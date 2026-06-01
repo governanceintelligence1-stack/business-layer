@@ -51,4 +51,23 @@ class PlanService
             ['plan_id' => $planId]
         );
     }
+
+    /** All active platform products (every plan includes the same product set; usage is token-limited). */
+    public function getPlatformProducts(): array
+    {
+        return $this->db->fetchAll(
+            "SELECT * FROM products WHERE status = 'active' ORDER BY name"
+        );
+    }
+
+    public function getMinimumMonthlyCredits(): float
+    {
+        $row = $this->db->fetch(
+            "SELECT COALESCE(SUM(credit_cost), 0) AS total
+             FROM products
+             WHERE status = 'active'"
+        );
+
+        return (float) ($row['total'] ?? 0);
+    }
 }

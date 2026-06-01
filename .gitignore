@@ -1,5 +1,15 @@
 /vendor/
 .env
+.env.backup
+
+# Runtime logs and generated diagnostics
 *.log
+*.log.*
+/logs/
+/storage/*.log
+/storage/**/*.log
+/storage/logs/
+/storage/payfast*.log
+
 .DS_Store
 /node_modules

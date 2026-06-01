@@ -9,7 +9,7 @@ use GI\Controllers\OrganisationController;
 use GI\Controllers\ProductController;
 use GI\Controllers\PlanController;
 use GI\Controllers\SubscriptionController;
-use GI\Controllers\CreditController;
+use GI\Controllers\TokenController;
 use GI\Controllers\ApiKeyController;
 use GI\Controllers\BillingController;
 use GI\Controllers\ApiController;
@@ -53,16 +53,19 @@ $router->get('/plans', [PlanController::class, 'index']);
 $router->get('/subscriptions', [SubscriptionController::class, 'index']);
 $router->post('/subscriptions/subscribe/{planId}', [SubscriptionController::class, 'subscribe']);
 $router->post('/subscriptions/cancel', [SubscriptionController::class, 'cancel']);
+$router->get('/subscriptions/history', [SubscriptionController::class, 'history']);
+$router->get('/subscriptions/transactions', [SubscriptionController::class, 'transactions']);
 $router->get('/checkout', [\GI\Controllers\CheckoutController::class, 'index']);
 $router->post('/checkout/pay', [\GI\Controllers\CheckoutController::class, 'pay']);
 $router->get('/checkout/return', [\GI\Controllers\CheckoutController::class, 'return']);
 $router->get('/checkout/cancel', [\GI\Controllers\CheckoutController::class, 'cancel']);
 $router->post('/checkout/notify', [\GI\Controllers\CheckoutController::class, 'notify']);
 
-// Credits
-$router->get('/credits', [CreditController::class, 'index']);
-$router->post('/credits/topup', [CreditController::class, 'topup']);
-$router->get('/credits/history', [CreditController::class, 'history']);
+// Tokens (legacy /credits URLs redirect)
+$router->get('/tokens', [TokenController::class, 'index']);
+$router->get('/tokens/history', [TokenController::class, 'history']);
+$router->get('/credits', [TokenController::class, 'redirectFromCredits']);
+$router->get('/credits/history', [TokenController::class, 'redirectFromCreditsHistory']);
 
 // API Keys
 $router->get('/api-keys', [ApiKeyController::class, 'index']);
@@ -73,12 +76,14 @@ $router->post('/api-keys/revoke/{id}', [ApiKeyController::class, 'revoke']);
 $router->get('/billing', [BillingController::class, 'index']);
 $router->post('/billing/payment-methods', [BillingController::class, 'storePaymentMethod']);
 $router->get('/billing/invoice/{id}', [BillingController::class, 'invoice']);
+$router->get('/billing/invoice/{id}/download', [BillingController::class, 'downloadInvoice']);
 $router->get('/billing/history', [BillingController::class, 'history']);
 
 // REST API v1
 $router->get('/api/v1/health', [ApiController::class, 'health']);
 $router->post('/api/v1/authorize', [ApiController::class, 'authorize']);
 $router->post('/api/v1/reserve', [ApiController::class, 'reserve']);
+$router->post('/api/v1/capture', [ApiController::class, 'capture']);
 $router->post('/api/v1/deduct', [ApiController::class, 'deduct']);
 $router->post('/api/v1/release', [ApiController::class, 'release']);
 $router->get('/api/v1/balance/{org_id}', [ApiController::class, 'balance']);

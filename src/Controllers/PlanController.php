@@ -7,6 +7,7 @@ use GI\Core\Middleware;
 use GI\Core\Session;
 use GI\Core\View;
 use GI\Services\PlanService;
+use GI\Services\EntitlementService;
 
 class PlanController
 {
@@ -16,12 +17,16 @@ class PlanController
         $user = Session::get('user');
 
         $plans = [];
+        $platformProducts = [];
+        $minimumMonthlyTokens = 0.0;
 
         try {
             $planService = new PlanService();
             $plans       = $planService->getActive();
+            $platformProducts = $planService->getPlatformProducts();
+            $minimumMonthlyTokens = (new EntitlementService())->getMinimumMonthlyTokens();
             foreach ($plans as &$plan) {
-                $plan['products'] = $planService->getPlanProducts($plan['id']);
+                $plan['products'] = $platformProducts;
                 $decodedFeatures = is_string($plan['features'] ?? '')
                     ? json_decode($plan['features'], true)
                     : ($plan['features'] ?? []);
@@ -65,6 +70,11 @@ class PlanController
             // Database may not be set up yet, continue with empty plans
         }
 
-        View::render('plans/index', ['user' => $user, 'plans' => $plans]);
+        View::render('plans/index', [
+            'user'                 => $user,
+            'plans'                => $plans,
+            'platformProducts'     => $platformProducts,
+            'minimumMonthlyTokens' => $minimumMonthlyTokens,
+        ]);
     }
 }

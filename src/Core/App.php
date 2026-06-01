@@ -10,7 +10,7 @@ use GI\Controllers\OrganisationController;
 use GI\Controllers\ProductController;
 use GI\Controllers\PlanController;
 use GI\Controllers\SubscriptionController;
-use GI\Controllers\CreditController;
+use GI\Controllers\TokenController;
 use GI\Controllers\ApiKeyController;
 use GI\Controllers\BillingController;
 use GI\Controllers\ApiController;
