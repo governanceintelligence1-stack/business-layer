@@ -61,11 +61,10 @@ $router->get('/checkout/return', [\GI\Controllers\CheckoutController::class, 're
 $router->get('/checkout/cancel', [\GI\Controllers\CheckoutController::class, 'cancel']);
 $router->post('/checkout/notify', [\GI\Controllers\CheckoutController::class, 'notify']);
 
-// Tokens (legacy /credits URLs redirect)
-$router->get('/tokens', [TokenController::class, 'index']);
-$router->get('/tokens/history', [TokenController::class, 'history']);
-$router->get('/credits', [TokenController::class, 'redirectFromCredits']);
-$router->get('/credits/history', [TokenController::class, 'redirectFromCreditsHistory']);
+// Credits
+$router->get('/credits', [CreditController::class, 'index']);
+$router->post('/credits/topup', [CreditController::class, 'topup']);
+$router->get('/credits/history', [CreditController::class, 'history']);
 
 // API Keys
 $router->get('/api-keys', [ApiKeyController::class, 'index']);

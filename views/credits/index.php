@@ -107,7 +107,7 @@ $usageListIncomplete = ($monthTotal > 0.00001) && ($listedMonthUsage + 0.0001 < 
             }
             ?>
         <tr>
-          <td style="font-size:.8rem;color:var(--text-muted);"><?= htmlspecialchars(substr((string) ($tx['created_at'] ?? ''), 0, 16)) ?></td>
+          <td style="font-size:.8rem;color:var(--text-muted);"><?= htmlspecialchars(date('j M H:i', strtotime((string) ($tx['created_at'] ?? '')))) ?></td>
           <td><?= htmlspecialchars((string) ($tx['description'] ?? '')) ?></td>
           <td>
             <span class="badge badge-<?= $badgeClass ?>">
