@@ -18,9 +18,6 @@
 <?php if (($hasSubscription ?? false)): ?>
 <p class="text-muted" style="margin: -0.5rem 0 1.25rem; font-size: 0.9rem;">
   Available tokens: <strong><?= number_format((float)($availableBalance ?? 0), 2) ?></strong>
-  <?php if ((float)($reservedBalance ?? 0) > 0): ?>
-    · Pending: <strong style="color:var(--warning);"><?= number_format((float)$reservedBalance, 2) ?></strong>
-  <?php endif; ?>
 </p>
 <?php endif; ?>
 

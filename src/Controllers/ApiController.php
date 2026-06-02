@@ -43,13 +43,14 @@ class ApiController
 
         $entitlementService = new EntitlementService();
         $result             = $entitlementService->authorizeJob($orgId, $slug, $tokens);
-
-        $summary = (new TokenService())->getAccountSummary($orgId);
-        $result['balance']           = $summary['balance'];
-        $result['reserved']          = $summary['reserved'];
-        $result['available']         = $summary['available'];
-        $result['tokens_available']  = $summary['available'];
-
+        $snapshot           = (new TokenService())->getAccountSnapshot($orgId);
+        $result['balance']           = $snapshot['balance'];
+        $result['reserved']          = $snapshot['reserved'];
+        $result['tokens_reserved']   = $snapshot['reserved'];
+        $result['available']         = $snapshot['available'];
+        $result['tokens_available']  = $snapshot['available'];
+        $result['requires_reservation'] = true;
+        $result['charge_on_success_only'] = true;
         ApiResponse::success($result);
     }
 
@@ -79,22 +80,26 @@ class ApiController
         $tokenService  = new TokenService();
 
         try {
-            $tokenService->reserveTokens($orgId, $reserveAmount, $jobId);
+            if (!$tokenService->reserveTokens($orgId, $reserveAmount, $jobId)) {
+                ApiResponse::error('Could not reserve tokens for this job', 402);
+                return;
+            }
         } catch (\RuntimeException $e) {
             ApiResponse::error($e->getMessage(), 402);
             return;
         }
 
-        $summary = $tokenService->getAccountSummary($orgId);
+        $snapshot = $tokenService->getAccountSnapshot($orgId);
         ApiResponse::success([
-            'reserved'          => $reserveAmount,
-            'job_id'            => $jobId,
-            'reserved_tokens'   => $reserveAmount,
-            'reserved_credits'  => $reserveAmount,
-            'balance'           => $summary['balance'],
-            'reserved_total'    => $summary['reserved'],
-            'available'         => $summary['available'],
-            'tokens_available'  => $summary['available'],
+            'reserved'           => $reserveAmount,
+            'job_id'             => $jobId,
+            'reserved_tokens'    => $reserveAmount,
+            'reserved_credits'   => $reserveAmount,
+            'balance'            => $snapshot['balance'],
+            'tokens_reserved'    => $snapshot['reserved'],
+            'available'          => $snapshot['available'],
+            'tokens_available'   => $snapshot['available'],
+            'charge_on_success_only' => true,
         ]);
     }
 
@@ -108,58 +113,43 @@ class ApiController
         Middleware::apiAuth();
         $body   = json_decode(file_get_contents('php://input') ?: '{}', true) ?? [];
         $orgId  = $body['org_id'] ?? '';
-        $slug   = $body['product_slug'] ?? '';
         $amount = (float) ($body['amount'] ?? $body['tokens'] ?? 0);
         $jobId  = $body['job_id'] ?? '';
+        $desc   = $body['description'] ?? 'Job token capture';
 
-        if (empty($jobId) || $amount <= 0) {
-            ApiResponse::error('job_id and amount are required. Reserve tokens before the job, then capture on success.');
+        if (empty($orgId) || empty($jobId) || $amount <= 0) {
+            ApiResponse::error('org_id, job_id and amount are required. Reserve tokens before the job runs.');
             return;
         }
 
         $tokenService = new TokenService();
-        $reservation  = $tokenService->findActiveReservationByJobId($jobId);
-        if ($reservation === false) {
-            ApiResponse::error('No active reservation for job_id. Call POST /api/v1/reserve first.', 409);
-            return;
-        }
-
-        $reservationOrgId = (string) ($reservation['organisation_id'] ?? '');
-        if ($orgId !== '' && $reservationOrgId !== $orgId) {
-            ApiResponse::error('job_id does not belong to this organisation', 403);
-            return;
-        }
-
-        $orgId = $reservationOrgId !== '' ? $reservationOrgId : $orgId;
-
-        if ($slug !== '') {
-            $entitlementService = new EntitlementService();
-            $auth               = $entitlementService->authorizeJob($orgId, $slug, $amount);
-            if (!$auth['authorized']) {
-                ApiResponse::error($auth['reason'], 402);
-                return;
-            }
-        }
 
         try {
-            $tokenService->captureTokens($jobId, $amount);
+            if (!$tokenService->captureTokensForJob($orgId, $jobId, $amount, $desc)) {
+                ApiResponse::error(
+                    'No active reservation for this job. Call POST /api/v1/reserve before starting work.',
+                    402
+                );
+                return;
+            }
         } catch (\RuntimeException $e) {
             ApiResponse::error($e->getMessage(), 402);
             return;
         }
 
-        $summary = $tokenService->getAccountSummary($orgId);
+        $snapshot = $tokenService->getAccountSnapshot($orgId);
         ApiResponse::success([
             'captured'         => $amount,
             'captured_tokens'  => $amount,
             'deducted'         => $amount,
             'deducted_tokens'  => $amount,
-            'job_id'           => $jobId,
             'org_id'           => $orgId,
-            'product_slug'     => $slug,
-            'balance'          => $summary['balance'],
-            'reserved_total'   => $summary['reserved'],
-            'available'        => $summary['available'],
+            'job_id'           => $jobId,
+            'balance'          => $snapshot['balance'],
+            'reserved'         => $snapshot['reserved'],
+            'tokens_reserved'  => $snapshot['reserved'],
+            'available'        => $snapshot['available'],
+            'tokens_available' => $snapshot['available'],
         ]);
     }
 
@@ -175,11 +165,7 @@ class ApiController
         }
 
         $tokenService = new TokenService();
-        if (!$tokenService->releaseReservation($jobId)) {
-            ApiResponse::error('No active reservation found for job_id', 404);
-            return;
-        }
-
+        $tokenService->releaseReservation($jobId);
         ApiResponse::success(['released' => true, 'job_id' => $jobId]);
     }
 
@@ -192,19 +178,15 @@ class ApiController
             return;
         }
 
-        $tokenService = new TokenService();
-        $summary      = $tokenService->getAccountSummary($orgId);
-        $pending      = $tokenService->getActiveReservations($orgId, 50);
+        $snapshot = (new TokenService())->getAccountSnapshot($orgId);
         ApiResponse::success([
-            'org_id'               => $orgId,
-            'balance'              => $summary['balance'],
-            'reserved'             => $summary['reserved'],
-            'available'            => $summary['available'],
-            'token_balance'        => $summary['balance'],
-            'tokens_reserved'      => $summary['reserved'],
-            'tokens_available'     => $summary['available'],
-            'pending_count'        => count($pending),
-            'pending_reservations' => $pending,
+            'org_id'            => $orgId,
+            'balance'           => $snapshot['balance'],
+            'reserved'          => $snapshot['reserved'],
+            'tokens_reserved'   => $snapshot['reserved'],
+            'available'         => $snapshot['available'],
+            'token_balance'     => $snapshot['balance'],
+            'tokens_available'  => $snapshot['available'],
         ]);
     }
 
@@ -227,8 +209,6 @@ class ApiController
             'tokens_available'   => $evaluation['available_balance'],
             'balance'            => $evaluation['balance'],
             'token_balance'      => $evaluation['balance'],
-            'reserved'           => $evaluation['reserved_balance'],
-            'tokens_reserved'    => $evaluation['reserved_balance'],
             'has_subscription'   => $evaluation['has_subscription'],
         ]);
     }

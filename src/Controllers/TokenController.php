@@ -16,17 +16,17 @@ class TokenController
         $user  = Session::get('user');
         $orgId = $user['organisation_id'] ?? '';
 
-        $summary              = ['balance' => 0.0, 'reserved' => 0.0, 'available' => 0.0];
-        $transactions         = [];
-        $pendingReservations  = [];
-        $tokenService         = new TokenService();
-        $monthUsage           = $tokenService->getTokensUsageThisCalendarMonth('');
+        $accountSnapshot     = ['balance' => 0.0, 'reserved' => 0.0, 'available' => 0.0];
+        $pendingReservations = [];
+        $transactions        = [];
+        $tokenService        = new TokenService();
+        $monthUsage          = $tokenService->getTokensUsageThisCalendarMonth('');
 
         if (!empty($orgId)) {
             try {
-                $summary             = $tokenService->getAccountSummary($orgId);
+                $accountSnapshot     = $tokenService->getAccountSnapshot($orgId);
+                $pendingReservations = $tokenService->getActiveReservations($orgId);
                 $transactions        = $tokenService->getTransactionHistory($orgId, 100);
-                $pendingReservations = $tokenService->getActiveReservations($orgId, 50);
                 $monthUsage          = $tokenService->getTokensUsageThisCalendarMonth($orgId);
             } catch (\Exception $e) {
                 // Database may not be set up yet
@@ -35,9 +35,10 @@ class TokenController
 
         View::render('tokens/index', [
             'user'                => $user,
-            'balance'             => $summary['balance'],
-            'reserved'            => $summary['reserved'],
-            'available'           => $summary['available'],
+            'accountSnapshot'     => $accountSnapshot,
+            'balance'             => $accountSnapshot['balance'],
+            'reserved'            => $accountSnapshot['reserved'],
+            'available'           => $accountSnapshot['available'],
             'pendingReservations' => $pendingReservations,
             'transactions'        => $transactions,
             'monthUsage'          => $monthUsage,
@@ -50,28 +51,32 @@ class TokenController
         $user  = Session::get('user');
         $orgId = $user['organisation_id'] ?? '';
 
-        $tokenService = new TokenService();
-        $transactions = [];
-        $summary      = ['balance' => 0.0, 'reserved' => 0.0, 'available' => 0.0];
-        $monthUsage   = $tokenService->getTokensUsageThisCalendarMonth('');
+        $tokenService        = new TokenService();
+        $transactions        = [];
+        $accountSnapshot     = ['balance' => 0.0, 'reserved' => 0.0, 'available' => 0.0];
+        $pendingReservations = [];
+        $monthUsage          = $tokenService->getTokensUsageThisCalendarMonth('');
 
         if (!empty($orgId)) {
             try {
-                $transactions = $tokenService->getTransactionHistory($orgId, 100);
-                $summary      = $tokenService->getAccountSummary($orgId);
-                $monthUsage   = $tokenService->getTokensUsageThisCalendarMonth($orgId);
+                $accountSnapshot     = $tokenService->getAccountSnapshot($orgId);
+                $pendingReservations = $tokenService->getActiveReservations($orgId);
+                $transactions        = $tokenService->getTransactionHistory($orgId, 100);
+                $monthUsage          = $tokenService->getTokensUsageThisCalendarMonth($orgId);
             } catch (\Exception $e) {
                 // Database may not be set up yet
             }
         }
 
         View::render('tokens/history', [
-            'user'         => $user,
-            'balance'      => $summary['balance'],
-            'reserved'     => $summary['reserved'],
-            'available'    => $summary['available'],
-            'transactions' => $transactions,
-            'monthUsage'   => $monthUsage,
+            'user'                => $user,
+            'accountSnapshot'     => $accountSnapshot,
+            'balance'             => $accountSnapshot['balance'],
+            'reserved'            => $accountSnapshot['reserved'],
+            'available'           => $accountSnapshot['available'],
+            'pendingReservations' => $pendingReservations,
+            'transactions'        => $transactions,
+            'monthUsage'          => $monthUsage,
         ]);
     }
 

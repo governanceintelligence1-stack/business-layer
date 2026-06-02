@@ -70,16 +70,13 @@ class EntitlementService
      *   has_subscription: bool,
      *   token_cost: float|null,
      *   available_balance: float,
-     *   balance: float,
-     *   reserved_balance: float
+     *   balance: float
      * }
      */
     public function evaluateProductAccess(string $orgId, string $productSlug): array
     {
-        $summary   = $this->tokenService->getAccountSummary($orgId);
-        $available = $summary['available'];
-        $balance   = $summary['balance'];
-        $reserved  = $summary['reserved'];
+        $available = $this->tokenService->getAvailableBalance($orgId);
+        $balance   = $this->tokenService->getBalance($orgId);
         $hasSub    = $this->hasActiveSubscription($orgId);
         $cost      = $this->getProductTokenCost($productSlug);
 
@@ -91,7 +88,6 @@ class EntitlementService
                 'token_cost'        => null,
                 'available_balance' => $available,
                 'balance'           => $balance,
-                'reserved_balance'  => $reserved,
             ];
         }
 
@@ -103,7 +99,6 @@ class EntitlementService
                 'token_cost'        => $cost,
                 'available_balance' => $available,
                 'balance'           => $balance,
-                'reserved_balance'  => $reserved,
             ];
         }
 
@@ -115,7 +110,6 @@ class EntitlementService
                 'token_cost'        => $cost,
                 'available_balance' => $available,
                 'balance'           => $balance,
-                'reserved_balance'  => $reserved,
             ];
         }
 
@@ -126,7 +120,6 @@ class EntitlementService
             'token_cost'        => $cost,
             'available_balance' => $available,
             'balance'           => $balance,
-            'reserved_balance'  => $reserved,
         ];
     }
 
@@ -170,20 +163,17 @@ class EntitlementService
         $evaluation = $this->evaluateProductAccess($orgId, $productSlug);
         $balance    = $evaluation['balance'];
         $available  = $evaluation['available_balance'];
-        $reserved   = $evaluation['reserved_balance'];
         $cost       = $evaluation['token_cost'];
 
         if ($cost === null) {
             return [
-                'authorized'           => false,
-                'reason'               => 'Unknown product',
-                'tokenBalance'         => $balance,
-                'token_cost'           => null,
-                'available'            => $available,
-                'reserved'             => $reserved,
-                'creditBalance'        => $balance,
-                'credit_cost'          => null,
-                'requires_reservation' => false,
+                'authorized'     => false,
+                'reason'         => 'Unknown product',
+                'tokenBalance'   => $balance,
+                'token_cost'     => null,
+                'available'      => $available,
+                'creditBalance'  => $balance,
+                'credit_cost'    => null,
             ];
         }
 
@@ -191,42 +181,36 @@ class EntitlementService
 
         if (!$evaluation['has_subscription']) {
             return [
-                'authorized'           => false,
-                'reason'               => 'No active subscription',
-                'tokenBalance'         => $balance,
-                'token_cost'           => $cost,
-                'available'            => $available,
-                'reserved'             => $reserved,
-                'creditBalance'        => $balance,
-                'credit_cost'          => $cost,
-                'requires_reservation' => false,
+                'authorized'     => false,
+                'reason'         => 'No active subscription',
+                'tokenBalance'   => $balance,
+                'token_cost'     => $cost,
+                'available'      => $available,
+                'creditBalance'  => $balance,
+                'credit_cost'    => $cost,
             ];
         }
 
         if ($available < $required) {
             return [
-                'authorized'           => false,
-                'reason'               => 'Insufficient tokens',
-                'tokenBalance'         => $balance,
-                'token_cost'           => $cost,
-                'available'            => $available,
-                'reserved'             => $reserved,
-                'creditBalance'        => $balance,
-                'credit_cost'          => $cost,
-                'requires_reservation' => false,
+                'authorized'     => false,
+                'reason'         => 'Insufficient tokens',
+                'tokenBalance'   => $balance,
+                'token_cost'     => $cost,
+                'available'      => $available,
+                'creditBalance'  => $balance,
+                'credit_cost'    => $cost,
             ];
         }
 
         return [
-            'authorized'           => true,
-            'reason'               => 'OK',
-            'tokenBalance'         => $balance,
-            'token_cost'           => $cost,
-            'available'            => $available,
-            'reserved'             => $reserved,
-            'creditBalance'        => $balance,
-            'credit_cost'          => $cost,
-            'requires_reservation' => true,
+            'authorized'     => true,
+            'reason'         => 'OK',
+            'tokenBalance'   => $balance,
+            'token_cost'     => $cost,
+            'available'      => $available,
+            'creditBalance'  => $balance,
+            'credit_cost'    => $cost,
         ];
     }
 }

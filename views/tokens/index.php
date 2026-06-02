@@ -1,11 +1,6 @@
 <?php
 $pageTitle = 'Tokens';
 
-$balance   = (float) ($balance ?? 0);
-$reserved  = (float) ($reserved ?? 0);
-$available = (float) ($available ?? ($balance - $reserved));
-$pendingReservations = is_array($pendingReservations ?? null) ? $pendingReservations : [];
-
 $monthUsage = is_array($monthUsage ?? null) ? $monthUsage : [
     'total'               => 0.0,
     'label'               => date('F Y'),
@@ -36,46 +31,62 @@ $usageListIncomplete = ($monthTotal > 0.00001) && ($listedMonthUsage + 0.0001 < 
 <div class="page-header">
   <div>
     <h1 class="page-title">Tokens</h1>
-    <p class="page-subtitle">Total balance, pending job holds, and what you can still spend.</p>
+    <p class="page-subtitle">Manage your token balance and transaction history.</p>
   </div>
 </div>
+
+<?php
+$snap = is_array($accountSnapshot ?? null) ? $accountSnapshot : [
+    'balance' => (float) ($balance ?? 0),
+    'reserved' => (float) ($reserved ?? 0),
+    'available' => (float) ($available ?? ($balance ?? 0)),
+];
+$balTotal = (float) ($snap['balance'] ?? 0);
+$balReserved = (float) ($snap['reserved'] ?? 0);
+$balAvailable = (float) ($snap['available'] ?? ($balTotal - $balReserved));
+$pending = is_array($pendingReservations ?? null) ? $pendingReservations : [];
+?>
 
 <div class="card-grid card-grid-3 mb-4">
   <div class="card stat-card">
     <div class="card-header" style="margin-bottom:0.5rem;">
-      <h3 class="card-title" style="font-size:0.95rem;">Total Balance</h3>
+      <h3 class="card-title" style="font-size:0.95rem;">Total balance</h3>
     </div>
     <div>
-      <div class="stat-value" style="font-size:1.75rem;"><?= number_format($balance, 2) ?></div>
-      <div class="stat-sub" style="margin-top:0.5rem;">All tokens in your account</div>
+      <div class="stat-value" style="font-size:1.75rem;"><?= number_format($balTotal, 2) ?></div>
+      <div class="stat-sub" style="margin-top:0.5rem;">Tokens in your account</div>
     </div>
   </div>
 
-  <div class="card stat-card" style="--accent:#f59e0b;">
+  <div class="card stat-card" style="--accent:#ff9800;">
     <div class="card-header" style="margin-bottom:0.5rem;">
-      <h3 class="card-title" style="font-size:0.95rem;">Pending (Reserved)</h3>
+      <h3 class="card-title" style="font-size:0.95rem;">Reserved (pending)</h3>
     </div>
     <div>
-      <div class="stat-value" style="font-size:1.75rem;"><?= number_format($reserved, 2) ?></div>
+      <div class="stat-value" style="font-size:1.75rem;"><?= number_format($balReserved, 2) ?></div>
       <div class="stat-sub" style="margin-top:0.5rem;">
-        <?= count($pendingReservations) ?> active job<?= count($pendingReservations) === 1 ? '' : 's' ?>
+        <?php if ($balReserved > 0): ?>
+          Locked for <?= count($pending) ?> active job<?= count($pending) === 1 ? '' : 's' ?>
+        <?php else: ?>
+          No jobs holding tokens right now
+        <?php endif; ?>
       </div>
     </div>
   </div>
 
-  <div class="card stat-card" style="--accent:#4caf50;">
+  <div class="card stat-card" style="--accent:#2196f3;">
     <div class="card-header" style="margin-bottom:0.5rem;">
       <h3 class="card-title" style="font-size:0.95rem;">Available</h3>
     </div>
     <div>
-      <div class="stat-value" style="font-size:1.75rem;"><?= number_format($available, 2) ?></div>
-      <div class="stat-sub" style="margin-top:0.5rem;">Balance minus pending holds</div>
+      <div class="stat-value" style="font-size:1.75rem;"><?= number_format($balAvailable, 2) ?></div>
+      <div class="stat-sub" style="margin-top:0.5rem;">Balance minus reserved (what new jobs can use)</div>
     </div>
   </div>
 </div>
 
 <div class="card-grid card-grid-2 mb-4">
-  <div class="card stat-card">
+  <div class="card stat-card" style="--accent:#4caf50;">
     <div class="card-header" style="margin-bottom:0.5rem;">
       <h3 class="card-title" style="font-size:0.95rem;">Usage This Month</h3>
     </div>
@@ -83,27 +94,19 @@ $usageListIncomplete = ($monthTotal > 0.00001) && ($listedMonthUsage + 0.0001 < 
       <div class="stat-value" style="font-size:1.5rem;"><?= number_format($monthTotal, 2) ?></div>
       <div class="stat-sub">Tokens consumed (<?= htmlspecialchars($monthLabel, ENT_QUOTES, 'UTF-8') ?>)</div>
       <div class="stat-sub" style="margin-top:0.25rem;font-size:0.72rem;">
-        Captured job usage and direct debits in your ledger for this calendar month.
+        Job captures, direct debits, and legacy debit rows in your ledger for this calendar month (local timezone).
       </div>
     </div>
   </div>
-
-  <div class="card" style="display:flex;flex-direction:column;justify-content:center;">
-    <p style="font-size:0.85rem;color:var(--text-muted);margin:0;">
-      Jobs <strong>reserve</strong> estimated tokens before they run. On success, reserved tokens are <strong>captured</strong>; on failure they are <strong>released</strong>.
-      Available = total balance − pending reserved.
-    </p>
-  </div>
 </div>
 
-<?php if (!empty($pendingReservations)): ?>
+<?php if (!empty($pending)): ?>
 <div class="card mb-4">
   <div class="card-header">
     <h3 class="card-title">Pending job reservations</h3>
-    <span class="badge badge-pending"><?= count($pendingReservations) ?> pending</span>
   </div>
   <p style="font-size:0.8rem;color:var(--text-muted);margin:0 0 1rem 0;">
-    Tokens held until each job completes (capture) or fails (release).
+    Tokens reserved before jobs finish. Released on failure; captured on success.
   </p>
   <div class="table-wrap">
     <table>
@@ -111,23 +114,27 @@ $usageListIncomplete = ($monthTotal > 0.00001) && ($listedMonthUsage + 0.0001 < 
         <tr>
           <th>Reserved</th>
           <th>Reference</th>
-          <th>Job ID</th>
+          <th>Job</th>
           <th>Since</th>
+          <th>Status</th>
         </tr>
       </thead>
       <tbody>
-        <?php foreach ($pendingReservations as $row): ?>
+        <?php foreach ($pending as $row):
+            $meta = [];
+            if (!empty($row['metadata'])) {
+                $decoded = json_decode((string) $row['metadata'], true);
+                $meta = is_array($decoded) ? $decoded : [];
+            }
+            $clientJob = (string) ($meta['client_job_id'] ?? '');
+            $jobDisplay = $clientJob !== '' ? $clientJob : substr((string) ($row['job_id'] ?? ''), 0, 8) . '…';
+            ?>
         <tr>
-          <td style="font-weight:600;color:var(--warning);">
-            <?= number_format((float) ($row['estimated_credits'] ?? 0), 2) ?>
-          </td>
-          <td><code style="font-size:.8rem;"><?= htmlspecialchars((string) ($row['reservation_reference'] ?? '')) ?></code></td>
-          <td style="font-size:.75rem;color:var(--text-muted);">
-            <code><?= htmlspecialchars(substr((string) ($row['job_id'] ?? ''), 0, 18)) ?>…</code>
-          </td>
-          <td style="font-size:.8rem;color:var(--text-muted);">
-            <?= htmlspecialchars(substr((string) ($row['created_at'] ?? ''), 0, 16)) ?>
-          </td>
+          <td style="font-weight:600;"><?= number_format((float) ($row['estimated_credits'] ?? 0), 2) ?></td>
+          <td><code style="font-size:.75rem;"><?= htmlspecialchars((string) ($row['reservation_reference'] ?? ''), ENT_QUOTES, 'UTF-8') ?></code></td>
+          <td style="font-size:.8rem;"><code><?= htmlspecialchars($jobDisplay, ENT_QUOTES, 'UTF-8') ?></code></td>
+          <td style="font-size:.8rem;color:var(--text-muted);"><?= htmlspecialchars(substr((string) ($row['created_at'] ?? ''), 0, 16), ENT_QUOTES, 'UTF-8') ?></td>
+          <td><span class="badge badge-pending">Pending</span></td>
         </tr>
         <?php endforeach; ?>
       </tbody>
@@ -141,7 +148,7 @@ $usageListIncomplete = ($monthTotal > 0.00001) && ($listedMonthUsage + 0.0001 < 
     <h3 class="card-title">Recent token transactions</h3>
   </div>
   <p style="font-size:0.8rem;color:var(--text-muted);margin:0 0 1rem 0;">
-    Last 100 ledger entries (newest first).
+    Last 100 ledger entries (newest first). Amount signs follow the same rules as the month usage total above.
     <?php if ($usageListIncomplete) : ?>
       <span style="display:block;margin-top:0.35rem;color:var(--warning);">
         Some <?= htmlspecialchars($monthLabel, ENT_QUOTES, 'UTF-8') ?> usage is not shown in this list; the <strong>Usage This Month</strong> figure is the full ledger total for the month.
@@ -167,25 +174,18 @@ $usageListIncomplete = ($monthTotal > 0.00001) && ($listedMonthUsage + 0.0001 < 
             $t = (string) ($tx['type'] ?? '');
             $isTokenIn = \GI\Services\TokenService::isTokenInLedgerType($t);
             $isUsage   = \GI\Services\TokenService::isUsageLedgerType($t);
-            $isReserve = \GI\Services\TokenService::isReserveLedgerType($t);
-            $isRelease = \GI\Services\TokenService::isReleaseLedgerType($t);
-            if ($isTokenIn) {
-                $badgeClass = 'active';
-            } elseif ($isUsage) {
-                $badgeClass = 'revoked';
-            } elseif ($isReserve || $isRelease) {
-                $badgeClass = 'pending';
-            } else {
-                $badgeClass = 'pending';
-            }
-            $amt = (float) ($tx['amount'] ?? 0);
+            $isLock    = \GI\Services\TokenService::isReservationLockType($t);
+            $isRelease = \GI\Services\TokenService::isReservationReleaseType($t);
+            $badgeClass = \GI\Services\TokenService::ledgerBadgeClass($t);
+            $typeLabel  = \GI\Services\TokenService::ledgerTypeLabel($t);
+            $amt        = (float) ($tx['amount'] ?? 0);
             if ($isTokenIn) {
                 $amtStyle = 'var(--success)';
                 $amtPrefix = '+';
             } elseif ($isUsage) {
                 $amtStyle = 'var(--danger)';
                 $amtPrefix = '-';
-            } elseif ($isReserve) {
+            } elseif ($isLock) {
                 $amtStyle = 'var(--warning)';
                 $amtPrefix = '⏳ ';
             } elseif ($isRelease) {
@@ -201,7 +201,7 @@ $usageListIncomplete = ($monthTotal > 0.00001) && ($listedMonthUsage + 0.0001 < 
           <td><?= htmlspecialchars((string) ($tx['description'] ?? '')) ?></td>
           <td>
             <span class="badge badge-<?= $badgeClass ?>">
-              <?= htmlspecialchars($t !== '' ? $t : '—') ?>
+              <?= htmlspecialchars($typeLabel) ?>
             </span>
           </td>
           <td style="font-size:.8rem;color:var(--text-muted);">

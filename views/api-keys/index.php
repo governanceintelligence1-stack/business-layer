@@ -79,25 +79,26 @@
   </div>
   <div style="font-size:.85rem;color:var(--text-muted);margin-bottom:1rem;">
     Include your API key in the <code style="color:var(--accent);">X-API-Key</code> header with every request.
-    Reserve tokens before a job starts; capture on success or release on failure.
   </div>
-  <div class="code-block" id="api-example"># 1) Reserve estimated tokens (locks balance until job finishes)
+  <div class="code-block" id="api-example"># 1) Check access (uses available = balance - reserved)
+curl -X POST https://my.gismartanalytics.com/api/v1/authorize \
+  -H "X-API-Key: gi_your_key_here" -H "Content-Type: application/json" \
+  -d '{"org_id":"your-org-id","product_slug":"governance-analytics","estimated_tokens":250}'
+
+# 2) Reserve before the job starts (locks tokens)
 curl -X POST https://my.gismartanalytics.com/api/v1/reserve \
-  -H "X-API-Key: gi_your_key_here" \
-  -H "Content-Type: application/json" \
-  -d '{"org_id":"your-org-id","product_slug":"governance-analytics","job_id":"550e8400-e29b-41d4-a716-446655440000","estimated_tokens":250}'
+  -H "X-API-Key: gi_your_key_here" -H "Content-Type: application/json" \
+  -d '{"org_id":"your-org-id","product_slug":"governance-analytics","job_id":"job-123","estimated_tokens":250}'
 
-# 2a) On success — capture actual usage
+# 3) On success: capture actual usage (or POST /api/v1/deduct — same handler)
 curl -X POST https://my.gismartanalytics.com/api/v1/capture \
-  -H "X-API-Key: gi_your_key_here" \
-  -H "Content-Type: application/json" \
-  -d '{"job_id":"550e8400-e29b-41d4-a716-446655440000","amount":240}'
+  -H "X-API-Key: gi_your_key_here" -H "Content-Type: application/json" \
+  -d '{"org_id":"your-org-id","job_id":"job-123","amount":240}'
 
-# 2b) On failure — release the hold
+# On failure: release the hold
 curl -X POST https://my.gismartanalytics.com/api/v1/release \
-  -H "X-API-Key: gi_your_key_here" \
-  -H "Content-Type: application/json" \
-  -d '{"job_id":"550e8400-e29b-41d4-a716-446655440000"}'</div>
+  -H "X-API-Key: gi_your_key_here" -H "Content-Type: application/json" \
+  -d '{"job_id":"job-123"}'</div>
   <button class="btn btn-ghost btn-sm mt-2" data-copy="#api-example">Copy Example</button>
 </div>
 

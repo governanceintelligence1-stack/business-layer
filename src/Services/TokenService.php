@@ -59,21 +59,14 @@ class TokenService
         return (float) $account['balance'] - (float) $account['reserved'];
     }
 
-    public function getReservedBalance(string $orgId): float
-    {
-        $account = $this->getOrCreateAccount($orgId);
-
-        return (float) ($account['reserved'] ?? 0);
-    }
-
     /**
      * @return array{balance: float, reserved: float, available: float}
      */
-    public function getAccountSummary(string $orgId): array
+    public function getAccountSnapshot(string $orgId): array
     {
         $account = $this->getOrCreateAccount($orgId);
-        $balance = (float) ($account['balance'] ?? 0);
-        $reserved = (float) ($account['reserved'] ?? 0);
+        $balance  = (float) $account['balance'];
+        $reserved = (float) $account['reserved'];
 
         return [
             'balance'   => $balance,
@@ -89,10 +82,6 @@ class TokenService
      */
     public function getActiveReservations(string $orgId, int $limit = 50): array
     {
-        if ($orgId === '') {
-            return [];
-        }
-
         return $this->db->fetchAll(
             "SELECT id, job_id, reservation_reference, estimated_credits, status, created_at, metadata
              FROM job_reservations
@@ -103,16 +92,16 @@ class TokenService
         );
     }
 
-    public function findActiveReservationByJobId(string $jobId): array|false
+    /**
+     * Capture a prior reservation on job success (charge actual usage, release hold).
+     */
+    public function captureTokensForJob(string $orgId, string $jobId, float $amount, string $description = ''): bool
     {
-        $jobUuid = $this->normalizeJobUuid($jobId);
+        if ($amount <= 0) {
+            throw new \InvalidArgumentException('Capture amount must be positive');
+        }
 
-        return $this->db->fetch(
-            "SELECT * FROM job_reservations
-             WHERE job_id = CAST(:job_id AS uuid) AND status = 'reserved'
-             LIMIT 1",
-            ['job_id' => $jobUuid]
-        );
+        return $this->finalizeReservation($jobId, $amount);
     }
 
     /**
@@ -265,22 +254,6 @@ class TokenService
         }
     }
 
-    /**
-     * Charge tokens for a completed job (releases hold, deducts actual usage).
-     */
-    public function captureTokens(string $jobId, float $actualAmount): bool
-    {
-        if ($actualAmount <= 0) {
-            throw new \InvalidArgumentException('Capture amount must be positive');
-        }
-
-        if (!$this->finalizeReservation($jobId, $actualAmount)) {
-            throw new \RuntimeException('No active reservation found for this job');
-        }
-
-        return true;
-    }
-
     public function deductTokens(
         string $orgId,
         float $amount,
@@ -289,12 +262,6 @@ class TokenService
         string $refId = '',
         ?string $createdByUserId = null
     ): bool {
-        if ($refId !== '' && $this->findActiveReservationByJobId($refId) !== false) {
-            throw new \RuntimeException(
-                'Job has an active reservation. Use POST /api/v1/capture (or deduct with job_id) to charge on success.'
-            );
-        }
-
         $pdo = $this->db->getPdo();
         $pdo->beginTransaction();
 
@@ -313,10 +280,9 @@ class TokenService
                 );
             }
 
-            $available = (float) $account['balance'] - (float) $account['reserved'];
-            if ($available < $amount) {
+            if ((float) $account['balance'] < $amount) {
                 $pdo->rollBack();
-                throw new \RuntimeException('Insufficient available tokens');
+                throw new \RuntimeException('Insufficient tokens');
             }
 
             $newBalance = (float) $account['balance'] - $amount;
@@ -352,12 +318,6 @@ class TokenService
     public function reserveTokens(string $orgId, float $amount, string $jobId): bool
     {
         $jobUuid = $this->normalizeJobUuid($jobId);
-
-        $existing = $this->findActiveReservationByJobId($jobId);
-        if ($existing !== false) {
-            throw new \RuntimeException('Job already has an active token reservation');
-        }
-
         $pdo = $this->db->getPdo();
         $pdo->beginTransaction();
 
@@ -579,24 +539,47 @@ class TokenService
         return in_array($type, self::usageLedgerTypes(), true);
     }
 
-    public static function isReserveLedgerType(string $type): bool
+    public static function isTokenInLedgerType(string $type): bool
+    {
+        return in_array($type, self::tokenInLedgerTypes(), true);
+    }
+
+    public static function isReservationLockType(string $type): bool
     {
         return $type === 'reserve';
     }
 
-    public static function isReleaseLedgerType(string $type): bool
+    public static function isReservationReleaseType(string $type): bool
     {
         return $type === 'release';
     }
 
-    public static function isPendingLedgerType(string $type): bool
+    public static function ledgerTypeLabel(string $type): string
     {
-        return in_array($type, ['reserve', 'release'], true);
+        return match ($type) {
+            'reserve'  => 'Pending (reserved)',
+            'release'  => 'Released',
+            'capture'  => 'Captured',
+            'debit_usage', 'debit' => 'Usage',
+            'credit_topup', 'subscription_credit', 'credit_grant' => 'Grant',
+            default    => $type !== '' ? $type : '—',
+        };
     }
 
-    public static function isTokenInLedgerType(string $type): bool
+    /** @return 'active'|'revoked'|'pending' */
+    public static function ledgerBadgeClass(string $type): string
     {
-        return in_array($type, self::tokenInLedgerTypes(), true);
+        if (self::isTokenInLedgerType($type)) {
+            return 'active';
+        }
+        if (self::isUsageLedgerType($type)) {
+            return 'revoked';
+        }
+        if (self::isReservationLockType($type) || self::isReservationReleaseType($type)) {
+            return 'pending';
+        }
+
+        return 'pending';
     }
 
     private static function usageTypesSqlInClause(): string

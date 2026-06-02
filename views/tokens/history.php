@@ -1,8 +1,11 @@
+<?php $pageTitle = 'Token Transactions History'; ?>
+
 <?php
-$pageTitle = 'Token Transactions History';
-$balance   = (float) ($balance ?? 0);
-$reserved  = (float) ($reserved ?? 0);
-$available = (float) ($available ?? ($balance - $reserved));
+$snap = is_array($accountSnapshot ?? null) ? $accountSnapshot : [
+    'balance' => (float) ($balance ?? 0),
+    'reserved' => (float) ($reserved ?? 0),
+    'available' => (float) ($available ?? ($balance ?? 0)),
+];
 ?>
 
 <div class="page-header">
@@ -15,22 +18,16 @@ $available = (float) ($available ?? ($balance - $reserved));
 
 <div class="card-grid card-grid-3 mb-4">
   <div class="card stat-card">
-    <div class="card-header" style="margin-bottom:0.5rem;">
-      <h3 class="card-title" style="font-size:0.95rem;">Total Balance</h3>
-    </div>
-    <div class="stat-value" style="font-size:1.5rem;"><?= number_format($balance, 2) ?></div>
+    <div class="stat-value" style="font-size:1.35rem;"><?= number_format((float) $snap['balance'], 2) ?></div>
+    <div class="stat-sub">Total balance</div>
   </div>
   <div class="card stat-card">
-    <div class="card-header" style="margin-bottom:0.5rem;">
-      <h3 class="card-title" style="font-size:0.95rem;">Pending (Reserved)</h3>
-    </div>
-    <div class="stat-value" style="font-size:1.5rem;"><?= number_format($reserved, 2) ?></div>
+    <div class="stat-value" style="font-size:1.35rem;color:var(--warning);"><?= number_format((float) $snap['reserved'], 2) ?></div>
+    <div class="stat-sub">Reserved (pending)</div>
   </div>
   <div class="card stat-card">
-    <div class="card-header" style="margin-bottom:0.5rem;">
-      <h3 class="card-title" style="font-size:0.95rem;">Available</h3>
-    </div>
-    <div class="stat-value" style="font-size:1.5rem;"><?= number_format($available, 2) ?></div>
+    <div class="stat-value" style="font-size:1.35rem;color:var(--accent);"><?= number_format((float) $snap['available'], 2) ?></div>
+    <div class="stat-sub">Available</div>
   </div>
 </div>
 
@@ -60,23 +57,18 @@ $available = (float) ($available ?? ($balance - $reserved));
             $t = (string) ($tx['type'] ?? '');
             $isTokenIn = \GI\Services\TokenService::isTokenInLedgerType($t);
             $isUsage   = \GI\Services\TokenService::isUsageLedgerType($t);
-            $isReserve = \GI\Services\TokenService::isReserveLedgerType($t);
-            $isRelease = \GI\Services\TokenService::isReleaseLedgerType($t);
-            if ($isTokenIn) {
-                $badgeClass = 'active';
-            } elseif ($isUsage) {
-                $badgeClass = 'revoked';
-            } else {
-                $badgeClass = 'pending';
-            }
-            $amt = (float) ($tx['amount'] ?? 0);
+            $isLock    = \GI\Services\TokenService::isReservationLockType($t);
+            $isRelease = \GI\Services\TokenService::isReservationReleaseType($t);
+            $badgeClass = \GI\Services\TokenService::ledgerBadgeClass($t);
+            $typeLabel  = \GI\Services\TokenService::ledgerTypeLabel($t);
+            $amt        = (float) ($tx['amount'] ?? 0);
             if ($isTokenIn) {
                 $amtStyle = 'var(--success)';
                 $amtPrefix = '+';
             } elseif ($isUsage) {
                 $amtStyle = 'var(--danger)';
                 $amtPrefix = '-';
-            } elseif ($isReserve) {
+            } elseif ($isLock) {
                 $amtStyle = 'var(--warning)';
                 $amtPrefix = '⏳ ';
             } elseif ($isRelease) {
@@ -92,7 +84,7 @@ $available = (float) ($available ?? ($balance - $reserved));
           <td><?= htmlspecialchars((string) ($tx['description'] ?? '')) ?></td>
           <td>
             <span class="badge badge-<?= $badgeClass ?>">
-              <?= htmlspecialchars($t !== '' ? $t : '—') ?>
+              <?= htmlspecialchars($typeLabel) ?>
             </span>
           </td>
           <td style="font-size:.8rem;color:var(--text-muted);">

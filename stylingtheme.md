@@ -51,7 +51,7 @@ Stroke icons copied inline from [Lucide](https://lucide.dev). Conventions:
 | Sidebar → Products | `activity` | same |
 | Sidebar → Plans | `clipboard-check` | same |
 | Sidebar → Subscriptions | `clock` | same |
-| Sidebar → Credits | `dollar-sign` | same |
+| Sidebar → Tokens | `dollar-sign` | same |
 | Sidebar → API Keys | `key` | same |
 | Sidebar → Billing | `credit-card` | same |
 | Sidebar → Products chevron | `chevron-right` | 14×14 `.sidebar-chevron`; rotates 90° when `.sidebar-group.open` |
@@ -104,6 +104,38 @@ Several views define a **second** shadcn-style block inline (`--background`, `--
 ### Component catalog
 
 Classes below are defined in `app.css` unless noted as page-local.
+
+### Token accounting and pending state UI
+
+The current UI exposes **three token states** and a reservation workflow:
+
+- **Total balance** = all tokens in account (`credit_accounts.balance`)
+- **Reserved (pending)** = tokens held by in-flight jobs (`credit_accounts.reserved`)
+- **Available** = `balance - reserved` (used for authorization checks and start-of-job gating)
+
+These states are now visible in system pages:
+
+| Surface | What is shown |
+|---------|----------------|
+| `views/tokens/index.php` | Stat cards for Total / Reserved (pending) / Available |
+| `views/tokens/index.php` | `Pending job reservations` table (job hold rows from `job_reservations` with `status = reserved`) |
+| `views/dashboard/index.php` | Header meta shows `Available`, and when applicable: `(X pending · Y total)` |
+| `views/tokens/history.php` | Snapshot cards for Total / Reserved / Available above ledger |
+
+Ledger labels for reservation lifecycle:
+
+- `reserve` → **Pending (reserved)** (badge: pending; amount hint uses hold icon)
+- `capture` → **Captured** (usage/debit class)
+- `release` → **Released** (badge: pending; amount hint uses release icon)
+
+API flow reflected in UI docs and examples:
+
+1. `POST /api/v1/authorize` (checks against available)
+2. `POST /api/v1/reserve` (creates pending hold before execution)
+3. `POST /api/v1/capture` (or `/api/v1/deduct`, same capture handler) on success
+4. `POST /api/v1/release` on failure
+
+`charge_on_success_only` remains true, while upfront reservation prevents concurrent overspend.
 
 #### Layout and shell
 
@@ -240,7 +272,8 @@ Classes below are defined in `app.css` unless noted as page-local.
 | `products/index.php`, `component.php` | Page header, product-card / workspace card, badges |
 | `plans/index.php` | plans-shell, pricing-grid (inline) |
 | `subscriptions/index.php`, `history.php`, `transactions.php` | Page header, card, table-wrap, badges |
-| `credits/index.php`, `history.php` | Page header, stat-card, card-grid, table |
+| `tokens/index.php`, `history.php` | Page header, stat-card, card-grid, pending reservations table, transaction ledger |
+| `credits/index.php`, `history.php` | Legacy aliases redirecting to `/tokens` |
 | `billing/index.php`, `history.php` | billing-shell, stat-card, table, payment-method-item, modal patterns |
 | `api-keys/index.php` | Page header, table, modal, code-block, data-copy |
 | `checkout/index.php` | checkout-layout, billing-cycle-option, form-input |

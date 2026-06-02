@@ -34,7 +34,7 @@
           <a href="http://upload.gismartanalytics.com" class="sidebar-sub-link">Upload Forensic Image</a>
           <a href="http://ocr.gismartanalytics.com" class="sidebar-sub-link">OCR</a>
           <a href="http://transcription.gismartanalytics.com" class="sidebar-sub-link">Transcription</a>
-          <a href="http://bank.gismartanalytics.com" class="sidebar-sub-link">Banking Intelligence</a>
+          <a href="http://bank.gismartanalytics.com" class="sidebar-sub-link">Bank Statements</a>
           <a href="http://file.gismartanalytics.com" class="sidebar-sub-link">File Comparison</a>
           <a href="http://mobile.gismartanalytics.com" class="sidebar-sub-link">Mobile Forensics</a>
 

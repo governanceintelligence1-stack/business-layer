@@ -745,11 +745,17 @@ tbody tr:hover {
 
     <div class="page-header-actions">
       <div class="page-header-meta">
-        Available: <strong><?= number_format((float) ($tokensAvailable ?? $tokenBalance ?? 0), 0) ?></strong>
-        <?php if ((float) ($tokensReserved ?? 0) > 0): ?>
-          · Pending: <strong style="color:var(--warning);"><?= number_format((float) $tokensReserved, 0) ?></strong>
+        <?php
+        $dashAvail = (float) ($tokenAvailable ?? ($tokenBalance ?? $creditBalance ?? 0));
+        $dashReserved = (float) ($tokenReserved ?? 0);
+        $dashBalance = (float) ($tokenBalance ?? $creditBalance ?? 0);
+        ?>
+        Available: <strong><?= number_format($dashAvail, 0) ?></strong>
+        <?php if ($dashReserved > 0): ?>
+          <span style="color:var(--text-muted);font-weight:400;">
+            (<?= number_format($dashReserved, 0) ?> pending · <?= number_format($dashBalance, 0) ?> total)
+          </span>
         <?php endif; ?>
-        · Total: <strong><?= number_format((float) ($tokenBalance ?? $creditBalance ?? 0), 0) ?></strong>
       </div>
       <div class="page-header-meta">
         <strong><?= htmlspecialchars($activePlan['plan_name'] ?? '—') ?></strong>

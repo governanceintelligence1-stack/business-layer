@@ -20,7 +20,9 @@ class DashboardController
         $user  = Session::get('user');
         $orgId = $user['organisation_id'] ?? '';
 
-        $tokenSummary = ['balance' => 0.0, 'reserved' => 0.0, 'available' => 0.0];
+        $tokenBalance    = 0.0;
+        $tokenReserved   = 0.0;
+        $tokenAvailable  = 0.0;
         $activePlan    = null;
         $apiKeys       = [];
         $transactions  = [];
@@ -35,7 +37,10 @@ class DashboardController
                 $subscriptionService = new SubscriptionService();
                 $apiKeyService       = new ApiKeyService();
                 $planService         = new PlanService();
-                $tokenSummary = $tokenService->getAccountSummary($orgId);
+                $snapshot       = $tokenService->getAccountSnapshot($orgId);
+                $tokenBalance   = $snapshot['balance'];
+                $tokenReserved  = $snapshot['reserved'];
+                $tokenAvailable = $snapshot['available'];
                 $activePlan    = $subscriptionService->getCurrentPlan($orgId);
                 $apiKeys       = $apiKeyService->getForOrganisation($orgId);
                 $transactions  = $tokenService->getTransactionHistory($orgId, 10);
@@ -67,10 +72,10 @@ class DashboardController
 
         View::render('dashboard/index', [
             'user'          => $user,
-            'tokenBalance' => $tokenSummary['balance'],
-            'creditBalance' => $tokenSummary['balance'],
-            'tokensReserved' => $tokenSummary['reserved'],
-            'tokensAvailable' => $tokenSummary['available'],
+            'tokenBalance'   => $tokenBalance,
+            'tokenReserved'  => $tokenReserved,
+            'tokenAvailable' => $tokenAvailable,
+            'creditBalance'  => $tokenBalance,
             'activePlan'    => $activePlan,
             'apiKeyCount'   => count($apiKeys),
             'transactions'  => $transactions,

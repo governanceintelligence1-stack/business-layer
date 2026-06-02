@@ -29,7 +29,7 @@ class ProductController
             'cta'         => 'Start Transcription',
         ],
         'bank-statements' => [
-            'title'       => 'Banking Intelligence',
+            'title'       => 'Bank Statements',
             'description' => 'Parse, normalize, and categorize statement transactions for investigation.',
             'cta'         => 'Process Statements',
         ],
@@ -60,14 +60,11 @@ class ProductController
 
         $products = [];
         $availableBalance = 0.0;
-        $reservedBalance  = 0.0;
         $hasSubscription = false;
 
         try {
             if ($orgId !== '') {
-                $summary          = $tokenService->getAccountSummary($orgId);
-                $availableBalance = $summary['available'];
-                $reservedBalance  = $summary['reserved'];
+                $availableBalance = $tokenService->getAvailableBalance($orgId);
                 $hasSubscription  = $entitlementService->hasActiveSubscription($orgId);
             }
 
@@ -98,7 +95,6 @@ class ProductController
             'user'              => $user,
             'products'          => $products,
             'availableBalance'  => $availableBalance,
-            'reservedBalance'   => $reservedBalance,
             'hasSubscription'   => $hasSubscription,
             'minimumMonthlyTokens' => (new EntitlementService())->getMinimumMonthlyTokens(),
         ]);
