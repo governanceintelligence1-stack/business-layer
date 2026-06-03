@@ -15,8 +15,9 @@ class Session
         }
 
         ini_set('session.cookie_httponly', '1');
-        $isProduction = ($_ENV['APP_ENV'] ?? 'production') === 'production';
-        ini_set('session.cookie_secure', $isProduction ? '1' : '0');
+        $isHttps = (!empty($_SERVER['HTTPS']) && strtolower((string) $_SERVER['HTTPS']) !== 'off')
+            || (($_SERVER['HTTP_X_FORWARDED_PROTO'] ?? '') === 'https');
+        ini_set('session.cookie_secure', $isHttps ? '1' : '0');
         ini_set('session.use_strict_mode', '1');
         ini_set('session.cookie_samesite', 'Lax');
         session_name('gi_session');

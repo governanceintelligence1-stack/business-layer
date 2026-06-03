@@ -3,71 +3,116 @@ declare(strict_types=1);
 
 namespace GI\Services;
 
-use GI\Core\DB;
+use GI\Core\ApiClient;
 
 class PlanService
 {
-    private DB $db;
+    private string $operationsApiUrl;
 
     public function __construct()
     {
-        $this->db = DB::getInstance();
+        $this->operationsApiUrl = (string) ($_ENV['OPERATIONS_API_URL'] ?? '');
+    }
+
+    /**
+     * @return list<array<string, mixed>>
+     */
+    private function listFromResponse(array $response): array
+    {
+        if (isset($response['data']) && is_array($response['data'])) {
+            return $response['data'];
+        }
+        return array_is_list($response) ? $response : [];
+    }
+
+    /**
+     * @return array<string, mixed>|false
+     */
+    private function itemFromResponse(array $response): array|false
+    {
+        if (isset($response['data']) && is_array($response['data'])) {
+            return $response['data'];
+        }
+        if ($response === [] || array_is_list($response)) {
+            return false;
+        }
+        return $response;
+    }
+
+    /**
+     * @param list<array<string, mixed>> $plans
+     * @return list<array<string, mixed>>
+     */
+    private function activeOnly(array $plans): array
+    {
+        return array_values(array_filter($plans, static function (array $plan): bool {
+            return strtolower((string) ($plan['status'] ?? 'active')) === 'active';
+        }));
     }
 
     public function getAll(): array
     {
-        return $this->db->fetchAll('SELECT * FROM plans ORDER BY price_monthly');
+        return $this->listFromResponse(ApiClient::get($this->operationsApiUrl, '/plans'));
     }
 
     public function getActive(): array
     {
-        return $this->db->fetchAll(
-            "SELECT * FROM plans WHERE status = 'active' ORDER BY price_monthly"
-        );
+        $plans = $this->listFromResponse(ApiClient::get($this->operationsApiUrl, '/plans/active'));
+        return $plans !== [] ? $plans : $this->activeOnly($this->getAll());
     }
 
     public function findById(string $id): array|false
     {
-        return $this->db->fetch(
-            'SELECT * FROM plans WHERE id = :id',
-            ['id' => $id]
-        );
+        $plan = $this->itemFromResponse(ApiClient::get($this->operationsApiUrl, '/plans/' . urlencode($id)));
+        if ($plan !== false) {
+            return $plan;
+        }
+
+        foreach ($this->getAll() as $candidate) {
+            if ((string) ($candidate['id'] ?? '') === $id) {
+                return $candidate;
+            }
+        }
+
+        return false;
     }
 
     public function findBySlug(string $slug): array|false
     {
-        return $this->db->fetch(
-            'SELECT * FROM plans WHERE slug = :slug',
-            ['slug' => $slug]
-        );
+        $plan = $this->itemFromResponse(ApiClient::get($this->operationsApiUrl, '/plans/slug/' . urlencode($slug)));
+        if ($plan !== false) {
+            return $plan;
+        }
+
+        foreach ($this->getAll() as $candidate) {
+            if ((string) ($candidate['slug'] ?? '') === $slug) {
+                return $candidate;
+            }
+        }
+
+        return false;
     }
 
     public function getPlanProducts(string $planId): array
     {
-        return $this->db->fetchAll(
-            'SELECT p.* FROM products p
-             INNER JOIN plan_products pp ON pp.product_id = p.id
-             WHERE pp.plan_id = :plan_id',
-            ['plan_id' => $planId]
+        return $this->listFromResponse(
+            ApiClient::get($this->operationsApiUrl, '/plans/' . urlencode($planId) . '/products')
         );
     }
 
     /** All active platform products (every plan includes the same product set; usage is token-limited). */
     public function getPlatformProducts(): array
     {
-        return $this->db->fetchAll(
-            "SELECT * FROM products WHERE status = 'active' ORDER BY name"
-        );
+        $products = $this->listFromResponse(ApiClient::get($this->operationsApiUrl, '/platform-products'));
+        return $products !== [] ? $products : (new ProductService())->getActive();
     }
 
     public function getMinimumMonthlyCredits(): float
     {
-        $row = $this->db->fetch(
-            "SELECT COALESCE(SUM(credit_cost), 0) AS total
-             FROM products
-             WHERE status = 'active'"
-        );
-
-        return (float) ($row['total'] ?? 0);
+        $resp = ApiClient::get($this->operationsApiUrl, '/plans/minimum-monthly-credits');
+        if (isset($resp['data']) && is_array($resp['data'])) {
+            return (float) ($resp['data']['total'] ?? 0);
+        }
+        return (float) ($resp['total'] ?? 0);
     }
 }

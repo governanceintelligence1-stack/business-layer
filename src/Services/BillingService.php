@@ -3,172 +3,81 @@ declare(strict_types=1);
 
 namespace GI\Services;
 
-use GI\Core\DB;
+use GI\Core\ApiClient;
 
 class BillingService
 {
-    private DB $db;
-    private array $invoiceColumns = [];
+    private string $clientApiUrl;
 
     public function __construct()
     {
-        $this->db = DB::getInstance();
-        $this->invoiceColumns = $this->loadInvoiceColumns();
-    }
-
-    private function loadInvoiceColumns(): array
-    {
-        try {
-            $rows = $this->db->fetchAll(
-                "SELECT column_name
-                 FROM information_schema.columns
-                 WHERE table_schema = 'public'
-                   AND table_name = 'billing_invoices'"
-            );
-            $cols = [];
-            foreach ($rows as $row) {
-                $name = (string)($row['column_name'] ?? '');
-                if ($name !== '') {
-                    $cols[$name] = true;
-                }
-            }
-            return $cols;
-        } catch (\Throwable $e) {
-            return [];
-        }
-    }
-
-    private function hasInvoiceColumn(string $column): bool
-    {
-        return isset($this->invoiceColumns[$column]);
+        $this->clientApiUrl = (string) ($_ENV['CLIENT_API_URL'] ?? '');
     }
 
     public function getInvoices(string $orgId): array
     {
-        return $this->db->fetchAll(
-            'SELECT * FROM billing_invoices WHERE organisation_id = :org_id ORDER BY created_at DESC',
-            ['org_id' => $orgId]
-        );
+        $resp = ApiClient::get($this->clientApiUrl, '/invoices/organisation/' . urlencode($orgId));
+        if (isset($resp['data']) && is_array($resp['data'])) {
+            return $resp['data'];
+        }
+        return array_is_list($resp) ? $resp : [];
     }
 
     public function getRecentInvoices(string $orgId, int $limit = 5): array
     {
-        return $this->db->fetchAll(
-            'SELECT * FROM billing_invoices WHERE organisation_id = :org_id ORDER BY created_at DESC LIMIT :limit',
-            ['org_id' => $orgId, 'limit' => $limit]
-        );
+        return array_slice($this->getInvoices($orgId), 0, max(0, $limit));
     }
 
     public function getInvoicesPaged(string $orgId, int $limit = 20, int $offset = 0): array
     {
-        $rows = $this->db->fetchAll(
-            'SELECT * FROM billing_invoices WHERE organisation_id = :org_id ORDER BY created_at DESC LIMIT :limit OFFSET :offset',
-            ['org_id' => $orgId, 'limit' => $limit, 'offset' => $offset]
-        );
-        $count = $this->db->fetch('SELECT COUNT(*) AS c FROM billing_invoices WHERE organisation_id = :org_id', ['org_id' => $orgId]);
-        return ['rows' => $rows, 'count' => (int)($count['c'] ?? 0)];
+        $resp = ApiClient::get($this->clientApiUrl, '/invoices/organisation/' . urlencode($orgId) . '/paged', [
+            'limit' => $limit,
+            'offset' => $offset,
+        ]);
+        $data = isset($resp['data']) && is_array($resp['data']) ? $resp['data'] : $resp;
+        $rows = isset($data['rows']) && is_array($data['rows']) ? $data['rows'] : [];
+        $count = (int) ($data['count'] ?? 0);
+        if ($rows === [] && $count === 0) {
+            $all = $this->getInvoices($orgId);
+            return [
+                'rows' => array_slice($all, max(0, $offset), max(0, $limit)),
+                'count' => count($all),
+            ];
+        }
+
+        return [
+            'rows' => isset($data['rows']) && is_array($data['rows']) ? $data['rows'] : [],
+            'count' => (int) ($data['count'] ?? 0),
+        ];
     }
 
     public function getInvoice(string $id): array|false
     {
-        $invoice = $this->db->fetch(
-            'SELECT * FROM billing_invoices WHERE id = :id',
-            ['id' => $id]
-        );
-
-        if (!$invoice) {
+        $resp = ApiClient::get($this->clientApiUrl, '/invoices/' . urlencode($id));
+        $data = isset($resp['data']) && is_array($resp['data']) ? $resp['data'] : $resp;
+        if (!is_array($data) || $data === [] || array_is_list($data)) {
             return false;
         }
-
-        $lineItems = $this->db->fetchAll(
-            'SELECT * FROM billing_line_items WHERE invoice_id = :id',
-            ['id' => $id]
-        );
-
-        $invoice['line_items'] = $lineItems;
-        return $invoice;
+        return $data;
     }
 
     public function createInvoice(string $orgId, array $items): string
     {
-        $subtotal = 0.0;
-        $normalized = [];
-        foreach ($items as $item) {
-            $qty = (float)($item['quantity'] ?? 1);
-            $unit = (float)($item['unit_price'] ?? 0);
-            $taxRate = (float)($item['tax_rate'] ?? 0);
-            $lineTotal = isset($item['line_total'])
-                ? (float) $item['line_total']
-                : (float)($item['total'] ?? ($qty * $unit * (1 + $taxRate / 100)));
-            $subtotal += $lineTotal;
-            $normalized[] = [
-                'description' => (string)($item['description'] ?? 'Line item'),
-                'quantity'    => $qty,
-                'unit_price'  => $unit,
-                'tax_rate'    => $taxRate,
-                'line_total'  => $lineTotal,
-                'product_id'  => $item['product_id'] ?? null,
-            ];
-        }
-
-        $taxAmount = 0.0;
-        $total = $subtotal + $taxAmount;
-        $number = 'INV-' . strtoupper(substr(bin2hex(random_bytes(6)), 0, 10)) . '-' . date('Ymd');
-
-        $data = array_filter([
+        $resp = ApiClient::post($this->clientApiUrl, '/invoices', [
             'organisation_id' => $orgId,
-            'invoice_number'  => $number,
-            'amount_total'    => $this->hasInvoiceColumn('amount_total') ? $total : null,
-            'subtotal'        => $this->hasInvoiceColumn('subtotal') ? $subtotal : null,
-            'tax_amount'      => $this->hasInvoiceColumn('tax_amount') ? $taxAmount : null,
-            'total'           => $this->hasInvoiceColumn('total') ? $total : null,
-            'amount_paid'     => $this->hasInvoiceColumn('amount_paid') ? 0 : null,
-            'amount_due'      => $this->hasInvoiceColumn('amount_due') ? $total : null,
-            'currency'        => 'ZAR',
-            'status'          => $this->hasInvoiceColumn('status') ? ($this->hasInvoiceColumn('total') ? 'issued' : 'pending') : null,
-            'due_date'        => $this->hasInvoiceColumn('due_date') ? date('Y-m-d', strtotime('+30 days')) : null,
-            'issued_at'       => $this->hasInvoiceColumn('issued_at') ? date('Y-m-d H:i:s') : null,
-            'created_at'      => $this->hasInvoiceColumn('created_at') ? date('Y-m-d H:i:s') : null,
-            'updated_at'      => $this->hasInvoiceColumn('updated_at') ? date('Y-m-d H:i:s') : null,
-            'notes'           => $this->hasInvoiceColumn('notes') ? ($taxAmount > 0 ? ('Includes tax amount: ' . number_format($taxAmount, 2, '.', '')) : null) : null,
-        ], static fn($v) => $v !== null);
-
-        $invoiceId = $this->db->insert('billing_invoices', $data);
-
-        foreach ($normalized as $item) {
-            $insert = [
-                'invoice_id'  => $invoiceId,
-                'description' => $item['description'],
-                'quantity'    => $item['quantity'],
-                'unit_price'  => $item['unit_price'],
-                'tax_rate'    => $item['tax_rate'],
-                'line_total'  => $item['line_total'],
-                'metadata'    => '{}',
-            ];
-            if (!empty($item['product_id'])) {
-                $insert['product_id'] = $item['product_id'];
-            }
-            $this->db->insert('billing_line_items', $insert);
-        }
-
-        return $invoiceId;
+            'items' => $items,
+        ]);
+        $data = isset($resp['data']) && is_array($resp['data']) ? $resp['data'] : $resp;
+        return (string) ($data['id'] ?? '');
     }
 
-    public function markPaid(string $invoiceId): int
+    public function markPaid(string $invoiceId, string $paymentTransactionId = ''): int
     {
-        $invoice = $this->db->fetch(
-            'SELECT * FROM billing_invoices WHERE id = :id',
-            ['id' => $invoiceId]
-        ) ?: [];
-        $total = (float)($invoice['amount_total'] ?? $invoice['total'] ?? 0);
-
-        return $this->db->update('billing_invoices', array_filter([
-            'status'      => $this->hasInvoiceColumn('status') ? 'paid' : null,
-            'amount_paid' => $this->hasInvoiceColumn('amount_paid') ? $total : null,
-            'amount_due'  => $this->hasInvoiceColumn('amount_due') ? 0 : null,
-            'paid_at'     => $this->hasInvoiceColumn('paid_at') ? date('Y-m-d H:i:s') : null,
-            'updated_at'  => $this->hasInvoiceColumn('updated_at') ? date('Y-m-d H:i:s') : null,
-        ], static fn($v) => $v !== null), ['id' => $invoiceId]);
+        $resp = ApiClient::post($this->clientApiUrl, '/invoices/' . urlencode($invoiceId) . '/mark-paid', [
+            'payment_transaction_id' => $paymentTransactionId !== '' ? $paymentTransactionId : null,
+        ]);
+        $data = isset($resp['data']) && is_array($resp['data']) ? $resp['data'] : $resp;
+        return (int) ($data['updated'] ?? 0);
     }
 
     /**
@@ -176,21 +85,8 @@ class BillingService
      */
     public function markCreditsGrantedForInvoice(string $invoiceId, float $creditsAmount): void
     {
-        if (!$this->hasInvoiceColumn('credits_granted')) {
-            return;
-        }
-
-        $data = [
-            'credits_granted' => true,
-            'updated_at'     => $this->hasInvoiceColumn('updated_at') ? date('Y-m-d H:i:s') : null,
-        ];
-        if ($this->hasInvoiceColumn('credits_granted_at')) {
-            $data['credits_granted_at'] = date('Y-m-d H:i:s');
-        }
-        if ($this->hasInvoiceColumn('credits_granted_amount')) {
-            $data['credits_granted_amount'] = $creditsAmount;
-        }
-
-        $this->db->update('billing_invoices', array_filter($data, static fn($v) => $v !== null), ['id' => $invoiceId]);
+        ApiClient::post($this->clientApiUrl, '/invoices/' . urlencode($invoiceId) . '/credits-granted', [
+            'credits_granted_amount' => $creditsAmount,
+        ]);
     }
 }

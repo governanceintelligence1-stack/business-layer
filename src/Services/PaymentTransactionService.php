@@ -3,15 +3,15 @@ declare(strict_types=1);
 
 namespace GI\Services;
 
-use GI\Core\DB;
+use GI\Core\ApiClient;
 
 class PaymentTransactionService
 {
-    private DB $db;
+    private string $clientApiUrl;
 
     public function __construct()
     {
-        $this->db = DB::getInstance();
+        $this->clientApiUrl = (string) ($_ENV['CLIENT_API_URL'] ?? '');
     }
 
     public function createPending(
@@ -24,53 +24,211 @@ class PaymentTransactionService
         array $payload = [],
         ?string $invoiceId = null
     ): string {
-        $sql = "INSERT INTO payment_transactions (
-                    organisation_id,
-                    invoice_id,
-                    payment_method_id,
-                    provider,
-                    merchant_reference,
-                    idempotency_key,
-                    amount,
-                    currency,
-                    status,
-                    raw_response,
-                    created_at,
-                    updated_at
-                ) VALUES (
-                    :organisation_id,
-                    :invoice_id,
-                    :payment_method_id,
-                    'payfast',
-                    :merchant_reference,
-                    :idempotency_key,
-                    :amount,
-                    'ZAR',
-                    'initiated',
-                    :raw_response::jsonb,
-                    :created_at,
-                    :updated_at
-                ) RETURNING id";
-
-        $stmt = $this->db->getPdo()->prepare($sql);
-        $stmt->execute([
-            'organisation_id'   => $orgId,
-            'invoice_id'        => $invoiceId,
+        $resp = ApiClient::post($this->clientApiUrl, '/payment-transactions', [
+            'organisation_id' => $orgId,
+            'invoice_id' => $invoiceId,
             'payment_method_id' => $paymentMethodId,
+            'provider' => 'payfast',
             'merchant_reference' => $providerRef,
-            'idempotency_key'   => $providerRef,
-            'amount'            => $amount,
-            'raw_response'      => json_encode([
+            'idempotency_key' => $providerRef,
+            'amount' => $amount,
+            'currency' => 'ZAR',
+            'status' => 'initiated',
+            'raw_response' => [
                 'user_id' => $userId ?: null,
                 'plan_id' => $planId ?: null,
                 'payload' => $payload,
-            ], JSON_UNESCAPED_SLASHES),
-            'created_at'        => date('Y-m-d H:i:s'),
-            'updated_at'        => date('Y-m-d H:i:s'),
+            ],
         ]);
+        $data = isset($resp['data']) && is_array($resp['data']) ? $resp['data'] : $resp;
+        return (string) ($data['id'] ?? '');
+    }
 
-        $result = $stmt->fetch(\PDO::FETCH_ASSOC);
-        return $result ? (string)($result['id'] ?? '') : '';
+    /**
+     * @param array<string, mixed> $payload
+     * @return array<string, mixed>|false
+     */
+    public function createPayfastCheckout(array $payload): array|false
+    {
+        $resp = ApiClient::post($this->clientApiUrl, '/checkout/payfast', $payload);
+        $data = isset($resp['data']) && is_array($resp['data']) ? $resp['data'] : $resp;
+        if (!is_array($data) || $data === [] || array_is_list($data) || isset($data['error'])) {
+            return false;
+        }
+
+        return $data;
+    }
+
+    /**
+     * @param array<string, string> $payload
+     * @return array{http_code: int, message: string, body: array<string, mixed>}
+     */
+    public function processPayfastItn(array $payload, string $rawBody = '', bool $signatureValid = true): array
+    {
+        $enriched = $this->enrichItnPayload($payload);
+        $resp = ApiClient::post(
+            $this->clientApiUrl,
+            '/checkout/payfast/itn',
+            $this->buildItnRequestBody($enriched, $rawBody, $signatureValid)
+        );
+        $data = isset($resp['data']) && is_array($resp['data']) ? $resp['data'] : $resp;
+        $httpCode = (int) ($data['_http_code'] ?? 0);
+        unset($data['_http_code']);
+
+        if ($httpCode === 0) {
+            $httpCode = (int) ($data['http_code'] ?? $data['status_code'] ?? 0);
+        }
+        if ($httpCode === 0) {
+            $httpCode = isset($data['error']) ? 422 : 200;
+        }
+
+        $message = (string) ($data['message'] ?? $data['error'] ?? 'OK');
+        if ($httpCode >= 400 && $message === 'OK') {
+            $message = 'ITN processing failed';
+        }
+
+        $outboxEventId = (string) ($data['outbox_event_id'] ?? '');
+        if ($httpCode < 400 && $outboxEventId !== '' && empty($data['outbox_process'])) {
+            $data['outbox_process'] = $this->processPaymentOutboxEvent($outboxEventId);
+        }
+
+        return [
+            'http_code' => $httpCode,
+            'message' => $message,
+            'body' => is_array($data) ? $data : [],
+        ];
+    }
+
+    /**
+     * @param array<string, string> $payload
+     */
+    public function recordPayfastItn(
+        array $payload,
+        string $rawBody,
+        string $status,
+        string $message = '',
+        ?bool $signatureValid = null
+    ): void {
+        $enriched = $this->enrichItnPayload($payload);
+        $merchantReference = trim((string) ($enriched['merchant_reference'] ?? $enriched['m_payment_id'] ?? ''));
+
+        ApiClient::post($this->clientApiUrl, '/payfast-itn-logs', [
+            'received_at' => date('c'),
+            'remote_addr' => (string) ($_SERVER['REMOTE_ADDR'] ?? ''),
+            'user_agent' => (string) ($_SERVER['HTTP_USER_AGENT'] ?? ''),
+            'raw_body' => $rawBody,
+            'parsed_payload' => $enriched,
+            'merchant_reference' => $merchantReference !== '' ? $merchantReference : null,
+            'pf_payment_id' => $enriched['pf_payment_id'] ?? null,
+            'payment_status' => $enriched['payment_status'] ?? null,
+            'amount_gross' => $enriched['amount_gross'] ?? null,
+            'signature_received' => $enriched['signature'] ?? null,
+            'signature_valid' => $signatureValid,
+            'processing_status' => $status,
+            'processing_message' => $message !== '' ? $message : null,
+            // Backward-compatible aliases for older client-api handlers.
+            'payload' => $enriched,
+            'status' => $status,
+            'message' => $message,
+        ]);
+    }
+
+    /**
+     * Ensure PayFast ITN fields expected by client-api are present.
+     *
+     * @param array<string, string> $payload
+     * @return array<string, string>
+     */
+    public function enrichItnPayload(array $payload): array
+    {
+        $merchantReference = trim((string) ($payload['merchant_reference'] ?? $payload['m_payment_id'] ?? ''));
+        if ($merchantReference !== '') {
+            $payload['merchant_reference'] = $merchantReference;
+            $payload['m_payment_id'] = (string) ($payload['m_payment_id'] ?? $merchantReference);
+        }
+
+        $paymentTransactionId = trim((string) ($payload['payment_transaction_id'] ?? $payload['custom_str5'] ?? ''));
+        if ($paymentTransactionId === '' && $merchantReference !== '') {
+            try {
+                $tx = $this->findByProviderRef($merchantReference);
+                if (is_array($tx) && !empty($tx['id'])) {
+                    $paymentTransactionId = (string) $tx['id'];
+                }
+            } catch (\Throwable $e) {
+                $paymentTransactionId = '';
+            }
+        }
+        if ($paymentTransactionId !== '') {
+            $payload['payment_transaction_id'] = $paymentTransactionId;
+            if (trim((string) ($payload['custom_str5'] ?? '')) === '') {
+                $payload['custom_str5'] = $paymentTransactionId;
+            }
+        }
+
+        if ($merchantReference !== '' && trim((string) ($payload['amount_gross'] ?? '')) === '') {
+            try {
+                $tx = $this->findByProviderRef($merchantReference);
+                if (is_array($tx) && array_key_exists('amount', $tx)) {
+                    $payload['amount_gross'] = number_format((float) $tx['amount'], 2, '.', '');
+                }
+            } catch (\Throwable $e) {
+                // Leave amount_gross empty; client-api will return validation details.
+            }
+        }
+
+        return $payload;
+    }
+
+    /**
+     * @param array<string, string> $payload
+     * @return array<string, mixed>
+     */
+    private function buildItnRequestBody(array $payload, string $rawBody, bool $signatureValid): array
+    {
+        return [
+            'merchant_reference' => (string) ($payload['merchant_reference'] ?? $payload['m_payment_id'] ?? ''),
+            'm_payment_id' => (string) ($payload['m_payment_id'] ?? $payload['merchant_reference'] ?? ''),
+            'payment_transaction_id' => (string) ($payload['payment_transaction_id'] ?? $payload['custom_str5'] ?? ''),
+            'pf_payment_id' => (string) ($payload['pf_payment_id'] ?? ''),
+            'payment_status' => (string) ($payload['payment_status'] ?? ''),
+            'amount_gross' => (string) ($payload['amount_gross'] ?? ''),
+            'signature' => (string) ($payload['signature'] ?? ''),
+            'payload' => $payload,
+            'raw_body' => $rawBody,
+            'signature_valid' => $signatureValid,
+        ];
+    }
+
+    /**
+     * @param array<string, string> $payload
+     * @return list<string>
+     */
+    public static function missingItnFields(array $payload): array
+    {
+        $required = [
+            'merchant_reference' => ['merchant_reference', 'm_payment_id'],
+            'm_payment_id' => ['m_payment_id', 'merchant_reference'],
+            'payment_transaction_id' => ['payment_transaction_id', 'custom_str5'],
+            'pf_payment_id' => ['pf_payment_id'],
+            'payment_status' => ['payment_status'],
+            'amount_gross' => ['amount_gross'],
+        ];
+
+        $missing = [];
+        foreach ($required as $label => $keys) {
+            $found = false;
+            foreach ($keys as $key) {
+                if (trim((string) ($payload[$key] ?? '')) !== '') {
+                    $found = true;
+                    break;
+                }
+            }
+            if (!$found) {
+                $missing[] = $label;
+            }
+        }
+
+        return $missing;
     }
 
     /**
@@ -78,53 +236,38 @@ class PaymentTransactionService
      */
     public function fetchByMerchantReferenceForUpdate(string $providerRef): array|false
     {
-        return $this->db->fetch(
-            'SELECT * FROM payment_transactions WHERE merchant_reference = :ref FOR UPDATE',
-            ['ref' => $providerRef]
-        );
+        $row = $this->findByProviderRef($providerRef);
+        return $row === false ? false : $row;
     }
 
     public function findByProviderRef(string $providerRef): array|false
     {
-        return $this->db->fetch(
-            'SELECT * FROM payment_transactions WHERE merchant_reference = :ref',
-            ['ref' => $providerRef]
-        );
+        $resp = ApiClient::get($this->clientApiUrl, '/payment-transactions/by-reference/' . urlencode($providerRef));
+        $data = isset($resp['data']) && is_array($resp['data']) ? $resp['data'] : $resp;
+        if (!is_array($data) || $data === [] || array_is_list($data)) {
+            return false;
+        }
+        return $data;
     }
 
     public function markPaid(string $id, array $payload): int
     {
-        return $this->db->update('payment_transactions', [
-            'status'      => 'successful',
-            'raw_response' => json_encode($payload, JSON_UNESCAPED_SLASHES),
-            'updated_at'  => date('Y-m-d H:i:s'),
-        ], ['id' => $id]);
+        return $this->markStatus($id, 'successful', $payload);
     }
 
     public function markCancelled(string $id, array $payload): int
     {
-        return $this->db->update('payment_transactions', [
-            'status'      => 'cancelled',
-            'raw_response' => json_encode($payload, JSON_UNESCAPED_SLASHES),
-            'updated_at'  => date('Y-m-d H:i:s'),
-        ], ['id' => $id]);
+        return $this->markStatus($id, 'cancelled', $payload);
     }
 
     public function markFailed(string $id, array $payload): int
     {
-        return $this->db->update('payment_transactions', [
-            'status'      => 'failed',
-            'raw_response' => json_encode($payload, JSON_UNESCAPED_SLASHES),
-            'updated_at'  => date('Y-m-d H:i:s'),
-        ], ['id' => $id]);
+        return $this->markStatus($id, 'failed', $payload);
     }
 
     public function markActivated(string $id): int
     {
-        return $this->db->update('payment_transactions', [
-            'status'       => 'successful',
-            'updated_at'   => date('Y-m-d H:i:s'),
-        ], ['id' => $id]);
+        return $this->markStatus($id, 'successful', []);
     }
 
     /**
@@ -134,34 +277,51 @@ class PaymentTransactionService
      */
     public function markSuccessfulWithItn(string $id, array $itnPayload, ?string $invoiceId = null): int
     {
-        $row = $this->db->fetch('SELECT raw_response FROM payment_transactions WHERE id = :id', ['id' => $id]);
-        $existing = [];
-        if (!empty($row['raw_response']) && is_string($row['raw_response'])) {
-            $decoded = json_decode($row['raw_response'], true);
-            $existing = is_array($decoded) ? $decoded : [];
+        $resp = ApiClient::post($this->clientApiUrl, '/payment-transactions/' . urlencode($id) . '/mark-successful-itn', [
+            'itn_payload' => $itnPayload,
+            'invoice_id' => $invoiceId,
+        ]);
+        $data = isset($resp['data']) && is_array($resp['data']) ? $resp['data'] : $resp;
+        return (int) ($data['updated'] ?? 0);
+    }
+
+    /**
+     * Process the payment outbox event that activates subscriptions, grants credits,
+     * and marks invoice credits as granted.
+     *
+     * @return array<string, mixed>
+     */
+    public function processPaymentOutboxEvent(string $eventId): array
+    {
+        if (trim($eventId) === '') {
+            return [];
         }
 
-        $merged = array_merge($existing, ['payfast_itn' => $itnPayload]);
-        $pfId = trim((string)($itnPayload['pf_payment_id'] ?? ''));
+        $resp = ApiClient::post($this->clientApiUrl, '/payment-outbox-events/' . urlencode($eventId) . '/process', []);
+        $data = isset($resp['data']) && is_array($resp['data']) ? $resp['data'] : $resp;
 
-        $data = [
-            'status'                 => 'successful',
-            'raw_response'           => json_encode($merged, JSON_UNESCAPED_SLASHES),
-            'updated_at'             => date('Y-m-d H:i:s'),
-            'provider_transaction_id' => $pfId !== '' ? $pfId : null,
-        ];
-        if ($invoiceId !== null && $invoiceId !== '') {
-            $data['invoice_id'] = $invoiceId;
-        }
-
-        return $this->db->update('payment_transactions', $data, ['id' => $id]);
+        return is_array($data) && !array_is_list($data) ? $data : [];
     }
 
     public function getRecentForOrganisation(string $orgId, int $limit = 20, int $offset = 0): array
     {
-        return $this->db->fetchAll(
-            'SELECT * FROM payment_transactions WHERE organisation_id = :org_id ORDER BY created_at DESC LIMIT :limit OFFSET :offset',
-            ['org_id' => $orgId, 'limit' => $limit, 'offset' => $offset]
-        );
+        $resp = ApiClient::get($this->clientApiUrl, '/payment-transactions/organisation/' . urlencode($orgId), [
+            'limit' => $limit,
+            'offset' => $offset,
+        ]);
+        if (isset($resp['data']) && is_array($resp['data'])) {
+            return $resp['data'];
+        }
+        return array_is_list($resp) ? $resp : [];
+    }
+
+    private function markStatus(string $id, string $status, array $payload): int
+    {
+        $resp = ApiClient::post($this->clientApiUrl, '/payment-transactions/' . urlencode($id) . '/status', [
+            'status' => $status,
+            'raw_response' => $payload,
+        ]);
+        $data = isset($resp['data']) && is_array($resp['data']) ? $resp['data'] : $resp;
+        return (int) ($data['updated'] ?? 0);
     }
 }

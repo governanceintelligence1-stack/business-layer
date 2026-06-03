@@ -9,6 +9,7 @@ document.addEventListener('DOMContentLoaded', () => {
   initSidebarSubmenus();
   initTabs();
   initModals();
+  initSubmitConfirmModals();
 });
 
 // ── Confirmation dialogs ──────────────────────────────────────────────────────
@@ -161,6 +162,43 @@ function initModals() {
 }
 
 // ── Format numbers ────────────────────────────────────────────────────────────
+function initSubmitConfirmModals() {
+  let pendingFormId = '';
+
+  document.querySelectorAll('[data-submit-confirm-open]').forEach(btn => {
+    btn.addEventListener('click', e => {
+      e.preventDefault();
+      e.stopPropagation();
+
+      const modalId = btn.getAttribute('data-submit-confirm-open') || '';
+      const modal = document.getElementById(modalId);
+      if (!modal) return;
+
+      pendingFormId = btn.getAttribute('data-submit-confirm-form') || '';
+
+      const title = btn.getAttribute('data-submit-confirm-title') || '';
+      const message = btn.getAttribute('data-submit-confirm-message') || '';
+      const titleEl = modal.querySelector('.modal-header h2');
+      const messageEl = modal.querySelector('[data-submit-confirm-message]');
+
+      if (titleEl && title !== '') titleEl.textContent = title;
+      if (messageEl && message !== '') messageEl.textContent = message;
+
+      modal.classList.remove('hidden');
+    });
+  });
+
+  document.querySelectorAll('[data-submit-confirm-submit]').forEach(btn => {
+    btn.addEventListener('click', () => {
+      if (pendingFormId === '') return;
+      const form = document.getElementById(pendingFormId);
+      if (form instanceof HTMLFormElement) {
+        form.submit();
+      }
+    });
+  });
+}
+
 window.formatTokens = (n) =>
   parseFloat(n).toLocaleString('en-ZA', { minimumFractionDigits: 0, maximumFractionDigits: 2 });
 window.formatCredits = window.formatTokens;

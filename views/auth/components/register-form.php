@@ -60,14 +60,29 @@
   .register-step .form-label { margin-bottom: .25rem; }
 </style>
 
+<?php
+$inviteToken = (string) ($inviteToken ?? '');
+$invitedEmail = (string) ($invitedEmail ?? '');
+$inviteIsActive = (bool) ($inviteIsActive ?? false);
+$inviteOrganisationName = (string) ($inviteOrganisationName ?? 'Invited organisation');
+?>
+
+<?php if (!$inviteIsActive): ?>
 <div class="register-steps" aria-label="Registration progress">
   <span class="register-step-pill is-active" data-pill="1">Part 1: Personal</span>
   <span class="register-step-pill" data-pill="2">Part 2: Organisation</span>
 </div>
+<?php endif; ?>
 
-<form method="POST" action="/auth/register" id="registerForm">
+<form method="POST" action="/auth/demo-register" id="registerForm">
   <input type="hidden" name="_token" value="<?= htmlspecialchars(\GI\Core\Session::getCsrfToken()) ?>">
   <input type="hidden" name="_register_step" id="registerStepInput" value="1">
+  <?php if ($inviteToken !== ''): ?>
+  <input type="hidden" name="invite" value="<?= htmlspecialchars($inviteToken, ENT_QUOTES, 'UTF-8') ?>">
+  <?php endif; ?>
+  <?php if ($inviteIsActive): ?>
+  <input type="hidden" name="organisation_name" value="<?= htmlspecialchars($inviteOrganisationName, ENT_QUOTES, 'UTF-8') ?>">
+  <?php endif; ?>
 
   <section class="register-step is-active" data-step="1">
     <div class="section-label" style="margin-bottom:.45rem;">Personal Details</div>
@@ -87,18 +102,23 @@
     <div class="form-group">
       <label class="form-label">Email Address *</label>
       <input type="email" name="email" class="form-control" required placeholder="jane@company.co.za"
-             value="<?= htmlspecialchars($_POST['email'] ?? '') ?>">
+             value="<?= htmlspecialchars($_POST['email'] ?? ($invitedEmail !== '' ? $invitedEmail : '')) ?>"
+             <?= $inviteIsActive && $invitedEmail !== '' ? 'readonly' : '' ?>>
     </div>
 
     <div class="register-actions step-one">
       <div class="register-inline-login">
-          Already have an account? <a href="/auth/login">Log in</a>
+          Already have an account? <a href="/auth/login<?= $inviteToken !== '' ? '?invite=' . rawurlencode($inviteToken) : '' ?>">Log in</a>
       </div>
+      <?php if ($inviteIsActive): ?>
+      <button type="submit" class="btn btn-primary w-50">Create Account &amp; Join Organisation</button>
+      <?php else: ?>
       <button type="button" class="btn btn-primary w-50" id="nextStepBtn">Continue to Organisation</button>
-      
+      <?php endif; ?>
     </div>
   </section>
 
+  <?php if (!$inviteIsActive): ?>
   <section class="register-step" data-step="2">
     <div class="section-label" style="margin:.25rem 0 .45rem;">Organisation Details</div>
     <div class="form-group">
@@ -138,9 +158,10 @@
 
     <div class="register-actions">
       <button type="button" class="btn btn-ghost w-100" id="prevStepBtn">Back</button>
-      <button type="submit" class="btn btn-primary w-100">Create Account</button>
+      <button type="submit" class="btn btn-primary w-100">Create Demo SSO Account</button>
     </div>
   </section>
+  <?php endif; ?>
 </form>
 
 <script>
@@ -154,6 +175,10 @@
     var nextBtn = document.getElementById('nextStepBtn');
     var prevBtn = document.getElementById('prevStepBtn');
     var pills = document.querySelectorAll('[data-pill]');
+
+    if (!stepTwo || !nextBtn) {
+      return;
+    }
 
     function setStep(step) {
       var isStepOne = step === 1;
@@ -176,8 +201,10 @@
       setStep(2);
     });
 
-    prevBtn.addEventListener('click', function () {
-      setStep(1);
-    });
+    if (prevBtn) {
+      prevBtn.addEventListener('click', function () {
+        setStep(1);
+      });
+    }
   })();
 </script>

@@ -3,28 +3,37 @@ declare(strict_types=1);
 
 namespace GI\Services;
 
-use GI\Core\DB;
+use GI\Core\ApiClient;
 
 class ArticleService
 {
-    private DB $db;
+    private string $operationsApiUrl;
 
     public function __construct()
     {
-        $this->db = DB::getInstance();
+        $this->operationsApiUrl = (string) ($_ENV['OPERATIONS_API_URL'] ?? '');
     }
 
     /**
-     * All published articles, newest first (by record timestamps).
+     * @return list<array<string, mixed>>
+     */
+    private function listFromResponse(array $response): array
+    {
+        if (isset($response['data']) && is_array($response['data'])) {
+            return array_is_list($response['data']) ? $response['data'] : [];
+        }
+
+        return array_is_list($response) ? $response : [];
+    }
+
+    /**
+     * All published articles, newest first.
      */
     public function getPublishedAll(): array
     {
-        return $this->db->fetchAll(
-            "SELECT id, title, article_date, summary, body, status, created_at, updated_at
-             FROM articles
-             WHERE status = 'published'
-             ORDER BY created_at DESC, updated_at DESC"
-        );
+        return $this->listFromResponse(ApiClient::get($this->operationsApiUrl, '/articles', [
+            'status' => 'published',
+        ]));
     }
 
     /**
@@ -33,13 +42,11 @@ class ArticleService
     public function getPublishedRecent(int $limit = 4): array
     {
         $limit = max(1, min(20, $limit));
+        $rows = $this->listFromResponse(ApiClient::get($this->operationsApiUrl, '/articles', [
+            'status' => 'published',
+            'limit' => $limit,
+        ]));
 
-        return $this->db->fetchAll(
-            "SELECT id, title, article_date, summary, body, status, created_at, updated_at
-             FROM articles
-             WHERE status = 'published'
-             ORDER BY created_at DESC, updated_at DESC
-             LIMIT {$limit}"
-        );
+        return array_slice($rows, 0, $limit);
     }
 }

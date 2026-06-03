@@ -3,136 +3,182 @@ declare(strict_types=1);
 
 namespace GI\Services;
 
-use GI\Core\DB;
+use GI\Core\ApiClient;
 
 class UserService
 {
-    private DB $db;
+    private string $userApiUrl;
 
     public function __construct()
     {
-        $this->db = DB::getInstance();
+        $this->userApiUrl = (string) ($_ENV['USER_API_URL'] ?? '');
+    }
+
+    /**
+     * @return array<string, mixed>|false
+     */
+    private function itemFromResponse(array $response): array|false
+    {
+        if (isset($response['data']) && is_array($response['data'])) {
+            return $response['data'];
+        }
+        if ($response === [] || array_is_list($response)) {
+            return false;
+        }
+        return $response;
     }
 
     public function findByKeycloakId(string $keycloakId): array|false
     {
-        return $this->db->fetch(
-            'SELECT u.*, up.first_name, up.last_name, up.display_name
-             FROM users u
-             LEFT JOIN user_profiles up ON up.user_id = u.id
-             WHERE u.keycloak_id = :id',
-            ['id' => $keycloakId]
+        return $this->itemFromResponse(
+            ApiClient::get($this->userApiUrl, '/users/keycloak/' . urlencode($keycloakId))
         );
     }
 
     public function findByEmail(string $email): array|false
     {
-        return $this->db->fetch(
-            'SELECT u.*, up.first_name, up.last_name, up.display_name
-             FROM users u
-             LEFT JOIN user_profiles up ON up.user_id = u.id
-             WHERE u.email = :email',
-            ['email' => $email]
+        return $this->itemFromResponse(
+            ApiClient::get($this->userApiUrl, '/users/by-email', ['email' => $email])
+        );
+    }
+
+    public function findByEmailForDbLogin(string $email): array|false
+    {
+        $userId = trim((string) ($_ENV['AUTH_TEST_USER_ID'] ?? '22222222-2222-2222-2222-222222222222'));
+        $orgId = trim((string) ($_ENV['AUTH_TEST_ORGANISATION_ID'] ?? $_ENV['AUTH_BYPASS_ORGANISATION_ID'] ?? '11111111-1111-1111-1111-111111111111'));
+        $role = trim((string) ($_ENV['AUTH_TEST_ROLE'] ?? 'owner'));
+        $token = ApiClient::testContextBearerToken($userId, $orgId, $role);
+        $headers = $token !== ''
+            ? ['Authorization: Bearer ' . $token]
+            : [
+                'X-Test-User-Id: ' . $userId,
+                'X-Test-Organisation-Id: ' . $orgId,
+                'X-Test-Role: ' . $role,
+            ];
+
+        return $this->itemFromResponse(
+            ApiClient::getWithHeaders($this->userApiUrl, '/users/by-email', ['email' => $email], $headers)
+        );
+    }
+
+    public function getProfileForDbLogin(string $userId): array|false
+    {
+        $token = ApiClient::testContextBearerToken();
+        $headers = $token !== '' ? ['Authorization: Bearer ' . $token] : [];
+
+        return $this->itemFromResponse(
+            ApiClient::getWithHeaders($this->userApiUrl, '/users/' . urlencode($userId) . '/profile', [], $headers)
         );
     }
 
     public function findById(string $id): array|false
     {
-        return $this->db->fetch(
-            'SELECT u.*, up.first_name, up.last_name, up.display_name
-             FROM users u
-             LEFT JOIN user_profiles up ON up.user_id = u.id
-             WHERE u.id = :id',
-            ['id' => $id]
-        );
+        return $this->itemFromResponse(ApiClient::get($this->userApiUrl, '/users/' . urlencode($id)));
     }
 
     public function create(array $data): string
     {
-        $firstName = trim((string)($data['first_name'] ?? ''));
-        $lastName = trim((string)($data['last_name'] ?? ''));
-        $phone = trim((string)($data['phone_number'] ?? $data['phone'] ?? ''));
-        unset($data['first_name'], $data['last_name'], $data['phone'], $data['phone_number']);
-
-        if (!isset($data['sso_provider']) || $data['sso_provider'] === '') {
-            $data['sso_provider'] = 'keycloak';
-        }
-        if (empty($data['username']) && !empty($data['email'])) {
-            $data['username'] = $data['email'];
-        }
-        if (!array_key_exists('email_verified', $data)) {
-            $data['email_verified'] = false;
+        $email = trim((string) ($data['email'] ?? ''));
+        if ($email === '') {
+            return '';
         }
 
-        $id = $this->db->insert('users', array_merge([
-            'created_at' => date('Y-m-d H:i:s'),
-            'updated_at' => date('Y-m-d H:i:s'),
-        ], $data));
-
-        $profile = [
-            'user_id' => $id,
-            'first_name' => $firstName ?: null,
-            'last_name' => $lastName ?: null,
-            'display_name' => trim($firstName . ' ' . $lastName) ?: null,
-            'created_at' => date('Y-m-d H:i:s'),
-            'updated_at' => date('Y-m-d H:i:s'),
+        $payload = [
+            'email' => $email,
+            'username' => (string) ($data['username'] ?? $email),
+            'sso_provider' => (string) ($data['sso_provider'] ?? 'keycloak_demo'),
+            'sso_subject_id' => $data['sso_subject_id'] ?? $data['keycloak_id'] ?? null,
+            'keycloak_id' => $data['keycloak_id'] ?? $data['sso_subject_id'] ?? null,
+            'organisation_id' => $data['organisation_id'] ?? null,
+            'email_verified' => $data['email_verified'] ?? true,
+            'role' => $this->normalizeAccountRole((string) ($data['role'] ?? 'viewer')),
+            'status' => (string) ($data['status'] ?? 'active'),
         ];
-        if ($phone !== '') {
-            $profile['phone_number'] = $phone;
-        }
-        $this->db->insert('user_profiles', $profile);
 
-        return $id;
+        $profile = array_filter([
+            'first_name' => $data['first_name'] ?? null,
+            'last_name' => $data['last_name'] ?? null,
+            'phone_number' => $data['phone_number'] ?? null,
+            'display_name' => $data['display_name'] ?? null,
+            'job_title' => $data['job_title'] ?? null,
+            'department' => $data['department'] ?? null,
+            'timezone' => $data['timezone'] ?? null,
+            'locale' => $data['locale'] ?? null,
+        ], static fn($value) => $value !== null && $value !== '');
+
+        $resp = ApiClient::post($this->userApiUrl, '/auth/sso-sync', array_merge($payload, $profile));
+        if (isset($resp['error'])) {
+            return '';
+        }
+
+        $row = $this->itemFromResponse($resp);
+        if ($row === false) {
+            return '';
+        }
+
+        $userId = (string) ($row['id'] ?? '');
+        if ($userId !== '' && $profile !== []) {
+            $this->saveProfile($userId, $profile);
+        }
+
+        return $userId;
+    }
+
+    /**
+     * @param array<string, mixed> $data
+     */
+    public function saveProfile(string $userId, array $data): bool
+    {
+        $userId = trim($userId);
+        if ($userId === '') {
+            return false;
+        }
+
+        $payload = array_filter([
+            'first_name' => $data['first_name'] ?? null,
+            'last_name' => $data['last_name'] ?? null,
+            'phone_number' => $data['phone_number'] ?? null,
+            'display_name' => $data['display_name'] ?? null,
+            'job_title' => $data['job_title'] ?? null,
+            'department' => $data['department'] ?? null,
+            'timezone' => $data['timezone'] ?? null,
+            'locale' => $data['locale'] ?? null,
+        ], static fn($value) => $value !== null && $value !== '');
+
+        if ($payload === []) {
+            return false;
+        }
+
+        $resp = ApiClient::patch(
+            $this->userApiUrl,
+            '/users/' . urlencode($userId) . '/profile',
+            $payload
+        );
+
+        return !isset($resp['error']) && (($resp['status'] ?? '') === 'updated' || isset($resp['profile']));
+    }
+
+    private function normalizeAccountRole(string $role): string
+    {
+        $role = strtolower(trim($role));
+
+        return match ($role) {
+            'user', 'member' => 'viewer',
+            default => $role,
+        };
     }
 
     public function update(string $id, array $data): int
     {
-        $firstName = array_key_exists('first_name', $data) ? trim((string)$data['first_name']) : null;
-        $lastName = array_key_exists('last_name', $data) ? trim((string)$data['last_name']) : null;
-        unset($data['first_name'], $data['last_name']);
-        $data['updated_at'] = date('Y-m-d H:i:s');
-        $updated = $this->db->update('users', $data, ['id' => $id]);
-
-        if ($firstName !== null || $lastName !== null) {
-            $existing = $this->db->fetch('SELECT id FROM user_profiles WHERE user_id = :id', ['id' => $id]);
-            $profileData = [
-                'updated_at' => date('Y-m-d H:i:s'),
-            ];
-            if ($firstName !== null) {
-                $profileData['first_name'] = $firstName ?: null;
-            }
-            if ($lastName !== null) {
-                $profileData['last_name'] = $lastName ?: null;
-            }
-            $fn = $firstName ?? '';
-            $ln = $lastName ?? '';
-            if ($fn !== '' || $ln !== '') {
-                $profileData['display_name'] = trim($fn . ' ' . $ln);
-            }
-
-            if ($existing) {
-                $this->db->update('user_profiles', $profileData, ['user_id' => $id]);
-            } else {
-                $this->db->insert('user_profiles', array_merge([
-                    'user_id' => $id,
-                    'created_at' => date('Y-m-d H:i:s'),
-                ], $profileData));
-            }
-        }
-
-        return $updated;
+        $resp = ApiClient::patch($this->userApiUrl, '/users/' . urlencode($id), $data);
+        $row = $this->itemFromResponse($resp);
+        return (int) ($row['updated'] ?? 0);
     }
 
     public function getProfile(string $userId): array|false
     {
-        return $this->db->fetch(
-            'SELECT u.*, up.first_name, up.last_name, up.display_name,
-                    o.name as organisation_name, o.slug as organisation_slug
-             FROM users u
-             LEFT JOIN user_profiles up ON up.user_id = u.id
-             LEFT JOIN organisations o ON u.organisation_id = o.id
-             WHERE u.id = :id',
-            ['id' => $userId]
+        return $this->itemFromResponse(
+            ApiClient::get($this->userApiUrl, '/users/' . urlencode($userId) . '/profile')
         );
     }
 
@@ -173,13 +219,19 @@ class UserService
         $orgId = $organisationId;
         if ($orgId === '') {
             $slug = trim((string)($_ENV['DEFAULT_ORGANISATION_SLUG'] ?? 'governance-intelligence-test'));
-            $org = $this->db->fetch('SELECT id FROM organisations WHERE slug = :slug LIMIT 1', ['slug' => $slug]);
+            $org = ApiClient::get($this->userApiUrl, '/organisations/slug/' . urlencode($slug));
+            if (isset($org['data']) && is_array($org['data'])) {
+                $org = $org['data'];
+            }
             if ($org && !empty($org['id'])) {
                 $orgId = (string) $org['id'];
             }
         }
         if ($orgId === '') {
-            $org = $this->db->fetch('SELECT id FROM organisations ORDER BY created_at ASC LIMIT 1');
+            $org = ApiClient::get($this->userApiUrl, '/organisations/default');
+            if (isset($org['data']) && is_array($org['data'])) {
+                $org = $org['data'];
+            }
             if ($org && !empty($org['id'])) {
                 $orgId = (string) $org['id'];
             }

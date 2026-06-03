@@ -3,42 +3,93 @@ declare(strict_types=1);
 
 namespace GI\Services;
 
-use GI\Core\DB;
+use GI\Core\ApiClient;
 
 class ProductService
 {
-    private DB $db;
+    private string $operationsApiUrl;
 
     public function __construct()
     {
-        $this->db = DB::getInstance();
+        $this->operationsApiUrl = (string) ($_ENV['OPERATIONS_API_URL'] ?? '');
+    }
+
+    /**
+     * @return list<array<string, mixed>>
+     */
+    private function listFromResponse(array $response): array
+    {
+        if (isset($response['data']) && is_array($response['data'])) {
+            return $response['data'];
+        }
+        return array_is_list($response) ? $response : [];
+    }
+
+    /**
+     * @return array<string, mixed>|false
+     */
+    private function itemFromResponse(array $response): array|false
+    {
+        if (isset($response['data']) && is_array($response['data'])) {
+            return $response['data'];
+        }
+        if ($response === [] || array_is_list($response)) {
+            return false;
+        }
+        return $response;
+    }
+
+    /**
+     * @param list<array<string, mixed>> $products
+     * @return list<array<string, mixed>>
+     */
+    private function activeOnly(array $products): array
+    {
+        return array_values(array_filter($products, static function (array $product): bool {
+            return strtolower((string) ($product['status'] ?? 'active')) === 'active';
+        }));
     }
 
     public function getAll(): array
     {
-        return $this->db->fetchAll('SELECT * FROM products ORDER BY name');
+        return $this->listFromResponse(ApiClient::get($this->operationsApiUrl, '/products'));
     }
 
     public function getActive(): array
     {
-        return $this->db->fetchAll(
-            "SELECT * FROM products WHERE status = 'active' ORDER BY name"
-        );
+        $products = $this->listFromResponse(ApiClient::get($this->operationsApiUrl, '/products/active'));
+        return $products !== [] ? $products : $this->activeOnly($this->getAll());
     }
 
     public function findById(string $id): array|false
     {
-        return $this->db->fetch(
-            'SELECT * FROM products WHERE id = :id',
-            ['id' => $id]
-        );
+        $product = $this->itemFromResponse(ApiClient::get($this->operationsApiUrl, '/products/' . urlencode($id)));
+        if ($product !== false) {
+            return $product;
+        }
+
+        foreach ($this->getAll() as $candidate) {
+            if ((string) ($candidate['id'] ?? '') === $id) {
+                return $candidate;
+            }
+        }
+
+        return false;
     }
 
     public function findBySlug(string $slug): array|false
     {
-        return $this->db->fetch(
-            'SELECT * FROM products WHERE slug = :slug',
-            ['slug' => $slug]
-        );
+        $product = $this->itemFromResponse(ApiClient::get($this->operationsApiUrl, '/products/slug/' . urlencode($slug)));
+        if ($product !== false) {
+            return $product;
+        }
+
+        foreach ($this->getAll() as $candidate) {
+            if ((string) ($candidate['slug'] ?? '') === $slug) {
+                return $candidate;
+            }
+        }
+
+        return false;
     }
 }

@@ -1,27 +1,34 @@
 # Governance Intelligence Business Layer
 
-The Business Layer is a PHP 8 application that sits between client-facing products and core platform services. It provides:
+The Business Layer is a PHP 8 API-orchestrating frontend for Governance Intelligence. It sits between users, client-facing products, PayFast, and the platform service APIs. It provides:
 
 - A web portal for organisation, product, plan, subscription, credit, API key, and billing management.
 - A REST API (`/api/v1/*`) for entitlement checks, credit reservation/deduction flows, API key validation, and usage/balance queries.
 - Authentication via Keycloak (OIDC) for portal login.
-- PostgreSQL-backed persistence for organisations, users, products/plans, subscriptions, credits, API usage, invoices, and audit/webhook records.
+- Hosted PayFast checkout orchestration and ITN forwarding.
+
+Persistence is owned by backend services:
+
+- `USER_API_URL`: organisations, users, profiles, membership.
+- `CLIENT_API_URL`: clients, subscriptions, invoices, payment methods, payment transactions, PayFast ITN logs, API keys.
+- `OPERATIONS_API_URL`: products, plans, platform products, entitlements, credit/token accounts, reservations, usage ledger.
 
 ## What This System Does
 
 At a high level, the system enforces commercial access to products:
 
 1. Users authenticate through Keycloak and manage commercial settings in the portal.
-2. Client systems call API endpoints to check entitlement and reserve credits before work starts.
-3. After work completes, credits are deducted (or reservations released).
-4. Usage and billing records are persisted for reporting and invoicing.
+2. The portal reads and writes business data through the user, client, and operations APIs.
+3. Client systems call API endpoints to check entitlement and reserve tokens before work starts.
+4. After work completes, tokens are captured or reservations are released through the operations API.
+5. PayFast checkout is initiated by this frontend, while payment records, ITN idempotency, invoice fulfillment, subscription updates, and token grants are completed by the client/operations services.
 
 Core business capabilities include:
 
 - Organisation and member management
 - Product and plan catalog access
 - Subscription lifecycle actions (subscribe/cancel)
-- Credit wallet operations (top-up, reserve, deduct, release, history)
+- Token wallet operations (top-up, reserve, capture, release, history)
 - API key lifecycle and usage analytics
 - Billing/invoice listing and lookup
 
@@ -37,7 +44,8 @@ The app uses a lightweight MVC-style structure with service-layer business logic
 4. Controllers validate input, call services, and return either:
    - Rendered views (portal pages), or
    - JSON via `GI\Core\ApiResponse` (REST API).
-5. Services interact with PostgreSQL through `GI\Core\DB`.
+5. Services call backend APIs through `GI\Core\ApiClient`.
+6. A small local JSON/log fallback under `storage/` is used only for PayFast visibility during development; it is not the source of truth.
 
 ### Layer Responsibilities
 
@@ -46,13 +54,11 @@ The app uses a lightweight MVC-style structure with service-layer business logic
 - `src/Controllers/`
   - HTTP entrypoints for web pages and API endpoints
 - `src/Services/`
-  - Business logic for organisation, product, plan, subscription, credit, entitlement, billing, API keys, webhooks
+  - Thin API clients for organisation, product, plan, subscription, token, entitlement, billing, payment methods, payment transactions, API keys, and webhooks
 - `views/`
   - PHP templates for portal pages and layouts
-- `database/migrations/`
-  - SQL schema migrations
-- `database/seeds/`
-  - Seed data for products/plans
+- `storage/`
+  - Local development PayFast trace files and logs only
 
 ## Key Routes
 
@@ -85,14 +91,14 @@ The app uses a lightweight MVC-style structure with service-layer business logic
 
 ## Data Model Overview
 
-The migrations define tables for:
+The backend service databases define tables for:
 
 - `organisations`, `users`
 - `products`, `plans`, `plan_products`
 - `subscriptions`
 - `credit_accounts`, `credit_transactions`
 - `api_keys`, `api_usage_logs`
-- `billing_invoices`, `billing_line_items`
+- `billing_invoices`, `billing_line_items`, `payment_methods`, `payment_transactions`, `payfast_itn_logs`
 - `job_reservations`
 - `audit_logs`, `webhooks`
 
@@ -102,7 +108,7 @@ The migrations define tables for:
 
 - PHP 8.0+
 - Composer
-- PostgreSQL 13+
+- Access to the user, client, and operations service APIs
 
 ### 1) Install dependencies
 
@@ -115,15 +121,14 @@ composer install
 Copy `.env.example` to `.env` and update values:
 
 - `APP_*` settings (`APP_URL`, `APP_ENV`, etc.)
-- `DB_*` PostgreSQL connection
+- `USER_API_URL`
+- `CLIENT_API_URL`
+- `OPERATIONS_API_URL`
 - `KEYCLOAK_*` OIDC client configuration
+- `PAYFAST_*` checkout and ITN configuration
 - `SESSION_SECRET`
 
-### 3) Create database schema
-
-Run all SQL files in `database/migrations/` in numeric order, then optionally apply seeds in `database/seeds/`.
-
-### 4) Run locally
+### 3) Run locally
 
 From project root:
 
@@ -147,3 +152,4 @@ composer test
   - `Authorization: Bearer <token>`, or
   - `X-API-Key: <key>`
 - CSRF validation is available for POST form requests through middleware/session token checks.
+- This frontend should not directly read or write payment, API key, entitlement, invoice, subscription, or token tables. Add backend service endpoints instead.

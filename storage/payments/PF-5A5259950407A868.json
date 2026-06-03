@@ -1,0 +1,27 @@
+{
+    "provider_ref": "PF-5A5259950407A868",
+    "status": "complete",
+    "provider": "payfast",
+    "organisation_id": "11111111-1111-1111-1111-111111111111",
+    "user_id": "22222222-2222-2222-2222-222222222222",
+    "plan_id": "08ed9413-d7aa-4c51-960c-3d4f28f8c0cf",
+    "requested_plan_id": "08ed9413-d7aa-4c51-960c-3d4f28f8c0cf",
+    "plan_name": "Starter",
+    "billing_cycle": "annual",
+    "amount": "5000.00",
+    "currency": "ZAR",
+    "invoice_id": "f205cb1e-31e2-41aa-b987-a894145e3b6d",
+    "payment_transaction_id": "3e9bf676-a737-42e7-ab69-3dfb6fb00712",
+    "payment_method_id": "ccb1f848-ed7f-4d00-9bb1-cb38d4f05cdc",
+    "updated_at": "2026-06-03T08:37:35+00:00",
+    "created_at": "2026-06-03T06:50:05+00:00",
+    "last_payload": {
+        "m_payment_id": "PF-5A5259950407A868",
+        "pf_payment_id": "3195638",
+        "payment_status": "COMPLETE",
+        "amount_gross": "5000.00",
+        "custom_str5": "3e9bf676-a737-42e7-ab69-3dfb6fb00712",
+        "merchant_reference": "PF-5A5259950407A868",
+        "payment_transaction_id": "3e9bf676-a737-42e7-ab69-3dfb6fb00712"
+    }
+}

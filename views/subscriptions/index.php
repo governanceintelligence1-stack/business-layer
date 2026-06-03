@@ -68,35 +68,10 @@
   <div class="card-header">
     <h3 class="card-title">Subscription History</h3>
   </div>
-  <div class="table-wrap">
-    <table>
-      <thead>
-        <tr>
-          <th>Plan</th>
-          <th>Billing</th>
-          <th>Status</th>
-          <th>Started</th>
-          <th>Ended</th>
-        </tr>
-      </thead>
-      <tbody>
-        <?php $displaySubs = array_slice($allSubs, 0, 5); ?>
-        <?php foreach ($displaySubs as $sub): ?>
-        <tr>
-          <td><?= htmlspecialchars($sub['plan_name']) ?></td>
-          <td><?= htmlspecialchars(ucfirst($sub['billing_cycle'] ?? '')) ?></td>
-          <td>
-            <span class="badge badge-<?= ($sub['status'] ?? '') === 'active' ? 'active' : 'revoked' ?>">
-              <?= htmlspecialchars(ucfirst($sub['status'] ?? '')) ?>
-            </span>
-          </td>
-          <td style="font-size:.85rem;color:var(--text-muted);"><?= htmlspecialchars(substr($sub['created_at'] ?? '', 0, 10)) ?></td>
-          <td style="font-size:.85rem;color:var(--text-muted);"><?= htmlspecialchars(substr($sub['cancelled_at'] ?? '', 0, 10)) ?></td>
-        </tr>
-        <?php endforeach; ?>
-      </tbody>
-    </table>
-  </div>
+  <?php
+    $subscriptions = array_slice($allSubs, 0, 5);
+    require __DIR__ . '/_history-table.php';
+  ?>
   <div style="margin-top:0.75rem; display:flex; justify-content:space-between; align-items:center;">
     <a href="/subscriptions/history" class="btn">View all subscriptions</a>
     <a href="/subscriptions/transactions" class="btn">View transactions</a>

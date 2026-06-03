@@ -3,203 +3,91 @@ declare(strict_types=1);
 
 namespace GI\Services;
 
-use GI\Core\DB;
+use GI\Core\ApiClient;
 
-/**
- * Guards payment ITN handling and fulfillment from duplicate side effects.
- */
 class PaymentIdempotencyService
 {
     public const REF_TYPE_PAYMENT_FULFILLMENT = 'payment_fulfillment';
 
-    private DB $db;
+    private string $clientApiUrl;
 
     public function __construct()
     {
-        $this->db = DB::getInstance();
+        $this->clientApiUrl = (string) ($_ENV['CLIENT_API_URL'] ?? '');
     }
 
-    /**
-     * True when this PayFast payment id was already processed successfully for this merchant reference.
-     */
+    /** @return array<string, mixed>|list<mixed> */
+    private function unwrap(array $response): array
+    {
+        if (isset($response['data']) && is_array($response['data'])) {
+            return $response['data'];
+        }
+
+        return $response;
+    }
+
     public function isPayfastPaymentAlreadyFulfilled(string $pfPaymentId, string $merchantReference): bool
     {
-        $pfPaymentId = trim($pfPaymentId);
-        $merchantReference = trim($merchantReference);
-        if ($pfPaymentId === '') {
+        if (trim($pfPaymentId) === '') {
             return false;
         }
 
-        if ($this->isPfPaymentIdInProcessedItnLogs($pfPaymentId, $merchantReference)) {
-            return true;
-        }
+        $resp = ApiClient::get($this->clientApiUrl, '/payment-idempotency/payfast/fulfilled', [
+            'pf_payment_id' => $pfPaymentId,
+            'merchant_reference' => $merchantReference,
+        ]);
+        $data = $this->unwrap($resp);
 
-        if ($merchantReference !== '') {
-            $tx = $this->db->fetch(
-                'SELECT status, raw_response FROM payment_transactions WHERE merchant_reference = :ref LIMIT 1',
-                ['ref' => $merchantReference]
-            );
-            if (is_array($tx) && ($tx['status'] ?? '') === 'successful') {
-                $payload = $this->decodeJson($tx['raw_response'] ?? null);
-                $existingPf = trim((string) ($payload['payfast_itn']['pf_payment_id'] ?? ''));
-                if ($existingPf !== '' && $existingPf === $pfPaymentId) {
-                    return true;
-                }
-            }
-        }
-
-        return false;
+        return (bool) ($data['fulfilled'] ?? $data['exists'] ?? false);
     }
 
-    /**
-     * Atomically mark invoice token grant as claimed. Returns false if already granted.
-     */
     public function tryClaimInvoiceTokenGrant(string $invoiceId): bool
     {
-        $invoiceId = trim($invoiceId);
-        if ($invoiceId === '') {
+        if (trim($invoiceId) === '') {
             return false;
         }
 
-        if (!$this->hasInvoiceColumn('credits_granted')) {
-            return true;
-        }
+        $resp = ApiClient::post(
+            $this->clientApiUrl,
+            '/payment-idempotency/invoices/' . urlencode($invoiceId) . '/claim-token-grant',
+            []
+        );
+        $data = $this->unwrap($resp);
 
-        $pdo = $this->db->getPdo();
-        $sets = ['credits_granted = true'];
-        if ($this->hasInvoiceColumn('credits_granted_at')) {
-            $sets[] = 'credits_granted_at = NOW()';
-        }
-        if ($this->hasInvoiceColumn('updated_at')) {
-            $sets[] = 'updated_at = NOW()';
-        }
-
-        $sql = 'UPDATE billing_invoices SET ' . implode(', ', $sets)
-            . ' WHERE id = :id AND (credits_granted IS NULL OR credits_granted = false)';
-
-        $stmt = $pdo->prepare($sql);
-        $stmt->execute(['id' => $invoiceId]);
-
-        return $stmt->rowCount() > 0;
+        return (bool) ($data['claimed'] ?? false);
     }
 
     public function isInvoiceTokenGrantClaimed(string $invoiceId): bool
     {
-        if (!$this->hasInvoiceColumn('credits_granted')) {
+        if (trim($invoiceId) === '') {
             return false;
         }
 
-        $row = $this->db->fetch(
-            'SELECT credits_granted FROM billing_invoices WHERE id = :id',
-            ['id' => $invoiceId]
+        $resp = ApiClient::get(
+            $this->clientApiUrl,
+            '/payment-idempotency/invoices/' . urlencode($invoiceId) . '/token-grant'
         );
+        $data = $this->unwrap($resp);
 
-        return !empty($row['credits_granted']);
+        return (bool) ($data['claimed'] ?? $data['credits_granted'] ?? false);
     }
 
-    /**
-     * Reuse an in-flight checkout when the client resubmits with the same idempotency key.
-     *
-     * @return array<string, mixed>|false
-     */
     public function findReusableCheckoutTransaction(string $orgId, string $idempotencyKey): array|false
     {
-        $idempotencyKey = trim($idempotencyKey);
-        if ($orgId === '' || $idempotencyKey === '') {
+        if ($orgId === '' || trim($idempotencyKey) === '') {
             return false;
         }
 
-        if (!$this->hasPaymentTxColumn('idempotency_key')) {
+        $resp = ApiClient::get($this->clientApiUrl, '/payment-idempotency/checkout', [
+            'organisation_id' => $orgId,
+            'idempotency_key' => $idempotencyKey,
+        ]);
+        $data = $this->unwrap($resp);
+
+        if (!is_array($data) || $data === [] || array_is_list($data)) {
             return false;
         }
 
-        return $this->db->fetch(
-            "SELECT *
-             FROM payment_transactions
-             WHERE organisation_id = :org_id
-               AND idempotency_key = :idem
-               AND status IN ('initiated', 'pending')
-             ORDER BY created_at DESC
-             LIMIT 1",
-            ['org_id' => $orgId, 'idem' => $idempotencyKey]
-        );
-    }
-
-    private function isPfPaymentIdInProcessedItnLogs(string $pfPaymentId, string $merchantReference): bool
-    {
-        if (!$this->tableExists('payfast_itn_logs') || !$this->hasItnLogColumn('pf_payment_id')) {
-            return false;
-        }
-
-        $statusCol = $this->hasItnLogColumn('processing_status') ? 'processing_status' : 'status';
-        $sql = "SELECT id FROM payfast_itn_logs
-                WHERE pf_payment_id = :pf
-                  AND ({$statusCol} = 'processed' OR {$statusCol} = 'partial')
-                ";
-        $params = ['pf' => $pfPaymentId];
-        if ($merchantReference !== '' && $this->hasItnLogColumn('merchant_reference')) {
-            $sql .= ' AND merchant_reference = :ref';
-            $params['ref'] = $merchantReference;
-        }
-        $sql .= ' LIMIT 1';
-
-        $row = $this->db->fetch($sql, $params);
-
-        return $row !== false;
-    }
-
-    private function decodeJson(mixed $raw): array
-    {
-        if (!is_string($raw) || $raw === '') {
-            return [];
-        }
-        $decoded = json_decode($raw, true);
-
-        return is_array($decoded) ? $decoded : [];
-    }
-
-    private function tableExists(string $table): bool
-    {
-        try {
-            $row = $this->db->fetch(
-                "SELECT 1 FROM information_schema.tables
-                 WHERE table_schema = 'public' AND table_name = :table LIMIT 1",
-                ['table' => $table]
-            );
-
-            return $row !== false;
-        } catch (\Throwable $e) {
-            return false;
-        }
-    }
-
-    private function hasInvoiceColumn(string $column): bool
-    {
-        return $this->hasColumn('billing_invoices', $column);
-    }
-
-    private function hasPaymentTxColumn(string $column): bool
-    {
-        return $this->hasColumn('payment_transactions', $column);
-    }
-
-    private function hasItnLogColumn(string $column): bool
-    {
-        return $this->hasColumn('payfast_itn_logs', $column);
-    }
-
-    private function hasColumn(string $table, string $column): bool
-    {
-        try {
-            $row = $this->db->fetch(
-                "SELECT 1 FROM information_schema.columns
-                 WHERE table_schema = 'public' AND table_name = :table AND column_name = :column LIMIT 1",
-                ['table' => $table, 'column' => $column]
-            );
-
-            return $row !== false;
-        } catch (\Throwable $e) {
-            return false;
-        }
+        return $data;
     }
 }

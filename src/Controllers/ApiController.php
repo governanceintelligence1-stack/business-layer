@@ -30,11 +30,11 @@ class ApiController
 
     public function authorize(): void
     {
-        Middleware::apiAuth();
         $body   = json_decode(file_get_contents('php://input') ?: '{}', true) ?? [];
         $orgId  = $body['org_id'] ?? '';
         $slug   = $body['product_slug'] ?? '';
         $tokens = $this->estimatedTokensFromBody($body);
+        Middleware::apiAuth((string) $orgId);
 
         if (empty($orgId) || empty($slug)) {
             ApiResponse::error('org_id and product_slug are required');
@@ -56,12 +56,12 @@ class ApiController
 
     public function reserve(): void
     {
-        Middleware::apiAuth();
         $body   = json_decode(file_get_contents('php://input') ?: '{}', true) ?? [];
         $orgId  = $body['org_id'] ?? '';
         $slug   = $body['product_slug'] ?? '';
         $tokens = $this->estimatedTokensFromBody($body);
         $jobId  = $body['job_id'] ?? '';
+        Middleware::apiAuth((string) $orgId);
 
         if (empty($orgId) || empty($slug) || empty($jobId)) {
             ApiResponse::error('org_id, product_slug and job_id are required');
@@ -110,12 +110,12 @@ class ApiController
 
     public function capture(): void
     {
-        Middleware::apiAuth();
         $body   = json_decode(file_get_contents('php://input') ?: '{}', true) ?? [];
         $orgId  = $body['org_id'] ?? '';
         $amount = (float) ($body['amount'] ?? $body['tokens'] ?? 0);
         $jobId  = $body['job_id'] ?? '';
         $desc   = $body['description'] ?? 'Job token capture';
+        Middleware::apiAuth((string) $orgId);
 
         if (empty($orgId) || empty($jobId) || $amount <= 0) {
             ApiResponse::error('org_id, job_id and amount are required. Reserve tokens before the job runs.');
@@ -171,7 +171,7 @@ class ApiController
 
     public function balance(string $orgId): void
     {
-        Middleware::apiAuth();
+        Middleware::apiAuth($orgId);
 
         if (empty($orgId)) {
             ApiResponse::error('org_id is required');
@@ -192,7 +192,7 @@ class ApiController
 
     public function entitlement(string $orgId, string $productSlug): void
     {
-        Middleware::apiAuth();
+        Middleware::apiAuth($orgId);
 
         $entitlementService = new EntitlementService();
         $evaluation         = $entitlementService->evaluateProductAccess($orgId, $productSlug);
@@ -231,9 +231,21 @@ class ApiController
 
     public function usage(string $apiKey): void
     {
-        Middleware::apiAuth();
-
         $apiKeyService = new ApiKeyService();
+        $principal = Middleware::apiAuth();
+        if (($principal['type'] ?? '') === 'api_key' && !hash_equals((string) ($principal['value'] ?? ''), $apiKey)) {
+            ApiResponse::forbidden('API credential cannot access this API key usage.');
+            return;
+        }
+
+        if (($principal['type'] ?? '') === 'bearer') {
+            $targetKey = $apiKeyService->findByKey($apiKey);
+            if ($targetKey === false || !hash_equals((string) ($principal['organisation_id'] ?? ''), (string) ($targetKey['organisation_id'] ?? ''))) {
+                ApiResponse::forbidden('API credential cannot access this API key usage.');
+                return;
+            }
+        }
+
         $stats         = $apiKeyService->getUsageStats($apiKey);
         ApiResponse::success(['api_key' => $apiKey, 'usage' => $stats]);
     }

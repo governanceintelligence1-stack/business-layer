@@ -71,7 +71,7 @@ class SubscriptionController
         try {
             if (!empty($orgId)) {
                 $subService = new SubscriptionService();
-                $allSubs = $subService->getForOrganisation($orgId);
+                $allSubs = $subService->getHistoryForOrganisation($orgId);
             }
         } catch (\Throwable $e) {
             // ignore
@@ -80,6 +80,7 @@ class SubscriptionController
         View::render('subscriptions/history', [
             'user' => $user,
             'allSubs' => $allSubs,
+            'subscriptions' => $allSubs,
         ]);
     }
 

@@ -65,10 +65,11 @@ $chartId = 'credit_usage_curve_chart';
       }
 
       var leadStartIndex = highestIndex > 0 ? (highestIndex - 1) : -1;
-      var tableRows = [['Period', 'Credits', { role: 'style' }, 'Anomaly', { role: 'style' }]];
+      var tableRows = [];
       var anomalyRows = [];
       for (var i = 0; i < chartRows.length; i++) {
         var val = Number(chartRows[i][1]);
+        if (!isFinite(val)) val = 0;
         var isAnomaly = i === highestIndex;
         if (isAnomaly) anomalyRows.push(i);
         tableRows.push([
@@ -80,7 +81,13 @@ $chartId = 'credit_usage_curve_chart';
         ]);
       }
 
-      var data = google.visualization.arrayToDataTable(tableRows);
+      var data = new google.visualization.DataTable();
+      data.addColumn('string', 'Period');
+      data.addColumn('number', 'Credits');
+      data.addColumn({ type: 'string', role: 'style' });
+      data.addColumn('number', 'Anomaly');
+      data.addColumn({ type: 'string', role: 'style' });
+      data.addRows(tableRows);
       var options = {
         chartArea: { left: 48, top: 14, width: '86%', height: '72%' },
         curveType: 'function',

@@ -224,8 +224,9 @@ API flow reflected in UI docs and examples:
 |-----------|---------------------|
 | Modal | `.modal-overlay`, `.modal`, `.modal-header`, `.modal-close` |
 | Open/close | `data-modal-open="id"`, `data-modal-close`, `#logout-confirm-modal` |
+| Submit confirmation modal | `data-submit-confirm-open="id"`, `data-submit-confirm-form="form-id"`, `data-submit-confirm-message`, `data-submit-confirm-submit` |
 | Tabs | `.tabs`, `.tab-btn`, `.tab-panel`, wrapper `data-tabs`, `data-tab`, `data-panel` |
-| Confirm | `data-confirm="message"` on buttons/links |
+| Confirm | Prefer submit confirmation modals for destructive actions; `data-confirm="message"` is legacy/browser fallback only |
 | Copy | `data-copy="#selector"` |
 
 #### Checkout and billing
@@ -291,9 +292,10 @@ API flow reflected in UI docs and examples:
 | `initMobileSidebar` | `#sidebar-toggle`, `.sidebar`, `#sidebar-overlay` | Slide sidebar on small screens |
 | `initTabs` | `[data-tabs]`, `.tab-btn`, `.tab-panel` | Show panel matching `data-tab` |
 | `initModals` | `[data-modal-open]`, `.modal-close`, `[data-modal-close]` | Show/hide `.modal-overlay` |
+| `initSubmitConfirmModals` | `[data-submit-confirm-open]`, `[data-submit-confirm-submit]` | Show a styled confirmation modal, then submit the selected form |
 | `initFlashDismiss` | `.alert[data-auto-dismiss]`, `.alert-close` | Fade and remove alerts |
 | `initCopyButtons` | `[data-copy]` | Clipboard copy + “✓ Copied” feedback |
-| `initConfirmations` | `[data-confirm]` | `confirm()` before submit/navigation |
+| `initConfirmations` | `[data-confirm]` | Legacy `confirm()` before submit/navigation; avoid for new destructive UI |
 | `initSystemTelemetry` | `window.GI_LOG`, `window.GI_LOGS` | localStorage event log (dev/diagnostics) |
 | `window.formatCredits` | — | ZA locale number formatting |
 

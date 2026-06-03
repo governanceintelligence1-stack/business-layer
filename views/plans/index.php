@@ -260,6 +260,11 @@ body {
           <span>R</span><?= number_format((float)($plan['price_monthly'] ?? 0), 0) ?>
           <span>/mo</span>
         </div>
+        <?php if ((float) ($plan['price_annual'] ?? 0) > 0): ?>
+        <div class="plan-description" style="margin-top:-0.45rem;min-height:auto;">
+          Annual: R<?= number_format((float)($plan['price_annual'] ?? 0), 0) ?>
+        </div>
+        <?php endif; ?>
 
         <ul class="plan-features">
           <li><?= number_format((float)($plan['credits_monthly'] ?? 0), 0) ?> tokens / month</li>

@@ -30,6 +30,8 @@ class DashboardController
         $recentArticles = [];
         $tokenUsageTrend = [];
         $tokenUsageTrendCaption = '';
+        $tokenUsageTrendSeries = [];
+        $tokenUsageTrendDays = 7;
 
         if (!empty($orgId)) {
             try {
@@ -43,25 +45,21 @@ class DashboardController
                 $tokenAvailable = $snapshot['available'];
                 $activePlan    = $subscriptionService->getCurrentPlan($orgId);
                 $apiKeys       = $apiKeyService->getForOrganisation($orgId);
-                $transactions  = $tokenService->getTransactionHistory($orgId, 10);
+                $transactions  = $tokenService->getRecentUsageTransactions($orgId, 10);
                 $products = $planService->getPlatformProducts();
             } catch (\Exception $e) {
                 // Database/driver may be unavailable in local UI-only setups.
             }
 
             try {
-                $trend = (new TokenService())->getUsageTrendLastDays($orgId, 7);
+                $tokenService = new TokenService();
+                $tokenUsageTrendSeries = $tokenService->getUsageTrendSeries($orgId, [7, 14, 30]);
+                $trend = $tokenUsageTrendSeries[(string) $tokenUsageTrendDays] ?? ['points' => [], 'caption' => ''];
                 $tokenUsageTrend = $trend['points'];
                 $tokenUsageTrendCaption = $trend['caption'];
             } catch (\Throwable $e) {
-                $trend = (new TokenService())->getUsageTrendLastDays('', 7);
-                $tokenUsageTrend = $trend['points'];
                 $tokenUsageTrendCaption = 'Token trend unavailable.';
             }
-        } else {
-            $trend = (new TokenService())->getUsageTrendLastDays('', 7);
-            $tokenUsageTrend = $trend['points'];
-            $tokenUsageTrendCaption = $trend['caption'];
         }
 
         try {
@@ -83,6 +81,8 @@ class DashboardController
             'recentArticles' => $recentArticles,
             'tokenUsageTrend' => $tokenUsageTrend,
             'tokenUsageTrendCaption' => $tokenUsageTrendCaption,
+            'tokenUsageTrendSeries' => $tokenUsageTrendSeries,
+            'tokenUsageTrendDays' => $tokenUsageTrendDays,
             'creditUsageTrend' => $tokenUsageTrend,
             'creditUsageTrendCaption' => $tokenUsageTrendCaption,
         ]);

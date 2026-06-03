@@ -15,6 +15,7 @@ use GI\Controllers\BillingController;
 use GI\Controllers\ApiController;
 use GI\Controllers\UpdatesController;
 use GI\Controllers\ProfileController;
+use GI\Controllers\InviteController;
 
 /** @var Router $router */
 
@@ -27,6 +28,17 @@ $router->get('/auth/callback', [AuthController::class, 'callback']);
 $router->get('/auth/logout', [AuthController::class, 'logout']);
 $router->get('/auth/register', [AuthController::class, 'register']);
 $router->post('/auth/register', [AuthController::class, 'registerPost']);
+$router->post('/auth/demo-register', [AuthController::class, 'demoRegister']);
+$router->post('/auth/demo-login', [AuthController::class, 'demoLogin']);
+$router->post('/auth/db-login', [AuthController::class, 'dbLogin']);
+
+// Invitations (public preview + accept after auth)
+$router->get('/invite/{token}', [InviteController::class, 'show']);
+$router->post('/invite/{token}/accept', [InviteController::class, 'accept']);
+
+// Profile onboarding after invite accept
+$router->get('/profile/complete', [InviteController::class, 'completeProfile']);
+$router->post('/profile/complete', [InviteController::class, 'completeProfilePost']);
 
 // Dashboard
 $router->get('/dashboard', [DashboardController::class, 'index']);
@@ -37,6 +49,12 @@ $router->get('/profile', [ProfileController::class, 'index']);
 $router->get('/organisation', [OrganisationController::class, 'index']);
 $router->post('/organisation', [OrganisationController::class, 'update']);
 $router->get('/organisation/members', [OrganisationController::class, 'members']);
+$router->post('/organisation/members/update', [OrganisationController::class, 'updateMembers']);
+$router->post('/organisation/members/{membershipId}', [OrganisationController::class, 'updateMember']);
+$router->post('/organisation/members/{membershipId}/remove', [OrganisationController::class, 'removeMember']);
+$router->get('/organisation/invitations', [OrganisationController::class, 'invitations']);
+$router->post('/organisation/invitations', [OrganisationController::class, 'invite']);
+$router->post('/organisation/invitations/{inviteId}/cancel', [OrganisationController::class, 'cancelInvite']);
 
 // Products
 $router->get('/products', [ProductController::class, 'index']);
@@ -86,8 +104,8 @@ $router->post('/api/v1/reserve', [ApiController::class, 'reserve']);
 $router->post('/api/v1/deduct', [ApiController::class, 'deduct']);
 $router->post('/api/v1/capture', [ApiController::class, 'capture']);
 $router->post('/api/v1/release', [ApiController::class, 'release']);
-$router->get('/api/v1/balance/{org_id}', [ApiController::class, 'balance']);
-$router->get('/api/v1/entitlement/{org_id}/{product_slug}', [ApiController::class, 'entitlement']);
+$router->get('/api/v1/balance/{orgId}', [ApiController::class, 'balance']);
+$router->get('/api/v1/entitlement/{orgId}/{productSlug}', [ApiController::class, 'entitlement']);
 $router->post('/api/v1/apikeys/validate', [ApiController::class, 'validateApiKey']);
 $router->get('/api/v1/usage/{api_key}', [ApiController::class, 'usage']);
 $router->get('/api/v1/products', [ApiController::class, 'products']);

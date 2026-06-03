@@ -3,17 +3,13 @@ declare(strict_types=1);
 
 namespace GI\Services;
 
-use GI\Core\DB;
-
 class WebhookService
 {
-    private DB $db;
     private SubscriptionService $subscriptionService;
     private TokenService $tokenService;
 
     public function __construct()
     {
-        $this->db                  = DB::getInstance();
         $this->subscriptionService = new SubscriptionService();
         $this->tokenService        = new TokenService();
     }

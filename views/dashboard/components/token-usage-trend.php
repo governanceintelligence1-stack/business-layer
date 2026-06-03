@@ -1,18 +1,80 @@
 <?php
 $usageData = is_array($tokenUsageTrend ?? null) ? $tokenUsageTrend : (is_array($creditUsageTrend ?? null) ? $creditUsageTrend : []);
 $trendCaption = (string) ($tokenUsageTrendCaption ?? $creditUsageTrendCaption ?? '');
+$trendSeries = is_array($tokenUsageTrendSeries ?? null) ? $tokenUsageTrendSeries : [];
+$defaultDays = '7';
+$tabDays = ['7' => '7d', '14' => '14d', '30' => '30d'];
+
+$points = $usageData;
+if (isset($trendSeries[$defaultDays]['points']) && is_array($trendSeries[$defaultDays]['points'])) {
+    $points = $trendSeries[$defaultDays]['points'];
+}
 
 $chartRows = [];
-foreach ($usageData as $row) {
-    $label = (string)($row['label'] ?? '');
-    $value = (float)($row['val'] ?? 0);
-    $chartRows[] = [$label, $value];
+foreach ($points as $point) {
+    if (!is_array($point)) {
+        continue;
+    }
+    $label = (string) ($point['label'] ?? '');
+    if ($label === '' && !empty($point['date'])) {
+        $label = date('j M', strtotime((string) $point['date']));
+    }
+    $raw = $point['tokens_used'] ?? ($point['value'] ?? ($point['val'] ?? 0));
+    if (is_string($raw)) {
+        $raw = preg_replace('/[^0-9.\-]/', '', $raw) ?? '0';
+    }
+    $chartRows[] = [$label, (float) $raw];
 }
-$chartRowsJson = json_encode($chartRows, JSON_UNESCAPED_SLASHES);
+
+$chartPayload = [
+    'defaultDays' => $defaultDays,
+    'seriesByRange' => [],
+];
+foreach (array_keys($tabDays) as $days) {
+    $key = (string) $days;
+    if (isset($trendSeries[$key]['points']) && is_array($trendSeries[$key]['points'])) {
+        $chartPayload['seriesByRange'][$key] = $trendSeries[$key]['points'];
+    }
+}
+if ($chartPayload['seriesByRange'] === [] || !isset($chartPayload['seriesByRange'][(string) $defaultDays])) {
+    $chartPayload['seriesByRange'][(string) $defaultDays] = $points;
+}
+
+$chartPayloadJson = json_encode($chartPayload, JSON_UNESCAPED_SLASHES) ?: '{}';
 $chartId = 'token_usage_curve_chart';
 ?>
 
 <style>
+  .usage-trend-card .card-header {
+    align-items: flex-start;
+    flex-wrap: wrap;
+    gap: 0.75rem;
+  }
+  .usage-trend-tabs {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.25rem;
+    padding: 0.2rem;
+    border: 1px solid var(--border);
+    border-radius: 999px;
+    background: var(--background);
+  }
+  .usage-trend-tab {
+    border: 0;
+    background: transparent;
+    color: var(--muted-foreground);
+    font-size: 0.72rem;
+    font-weight: 600;
+    line-height: 1;
+    padding: 0.4rem 0.65rem;
+    border-radius: 999px;
+    cursor: pointer;
+  }
+  .usage-trend-tab.is-active {
+    background: var(--primary);
+    color: var(--primary-foreground);
+    border: 1px solid var(--primary);
+  }
   .anomaly-pulse-layer {
     position: absolute;
     inset: 0;
@@ -34,25 +96,87 @@ $chartId = 'token_usage_curve_chart';
   }
 </style>
 
-<div class="card span-2 span-row-2" style="display: flex; flex-direction: column;">
-  <div class="card-header" style="margin-bottom: 0.5rem;">
+<div class="card span-2 span-row-2 usage-trend-card" style="display: flex; flex-direction: column;">
+  <div class="card-header" style="margin-bottom: 0.35rem;">
     <h3 class="card-title" style="font-size: 0.95rem;">Token Usage Trend</h3>
+    <div class="usage-trend-tabs" role="tablist" aria-label="Trend view">
+      <?php foreach ($tabDays as $days => $label): ?>
+      <button
+        type="button"
+        class="usage-trend-tab<?= $days === $defaultDays ? ' is-active' : '' ?>"
+        data-days="<?= htmlspecialchars((string) $days, ENT_QUOTES, 'UTF-8') ?>"
+        role="tab"
+        aria-selected="<?= $days === $defaultDays ? 'true' : 'false' ?>">
+        <?= htmlspecialchars($label, ENT_QUOTES, 'UTF-8') ?>
+      </button>
+      <?php endforeach; ?>
+    </div>
   </div>
+
   <div id="<?= $chartId ?>" style="width: 100%; height: 220px;"></div>
-  <?php if ($trendCaption !== '') : ?>
-  <div style="font-size: 0.75rem; color: var(--muted-foreground); font-weight: 600; margin-top: 0.35rem;"><?= htmlspecialchars($trendCaption, ENT_QUOTES, 'UTF-8') ?></div>
-  <?php endif; ?>
+  <div id="<?= $chartId ?>_caption" style="font-size: 0.75rem; color: var(--muted-foreground); font-weight: 600; margin-top: 0.35rem;">
+    <?= htmlspecialchars($trendCaption, ENT_QUOTES, 'UTF-8') ?>
+  </div>
 </div>
 
 <script src="https://www.gstatic.com/charts/loader.js"></script>
 <script>
   (function () {
     var chartId = <?= json_encode($chartId) ?>;
-    var chartRows = <?= $chartRowsJson ?: '[]' ?>;
+    var chartPayload = <?= $chartPayloadJson ?>;
+    var activeDays = '7';
+    var chartRows = [];
+
+    function pointsToChartRows(points) {
+      var rows = [];
+      (points || []).forEach(function (point) {
+        var label = point.label || '';
+        if (!label && point.date) {
+          var d = new Date(point.date + 'T00:00:00');
+          if (!isNaN(d.getTime())) {
+            label = d.toLocaleDateString(undefined, { day: 'numeric', month: 'short' });
+          }
+        }
+        var raw = point.tokens_used != null ? point.tokens_used : (point.value != null ? point.value : 0);
+        rows.push([label, Number(raw) || 0]);
+      });
+      return rows;
+    }
+
+    function resolvePoints() {
+      var byRange = chartPayload.seriesByRange || {};
+      return byRange[activeDays] || [];
+    }
+
+    function syncActiveTab() {
+      document.querySelectorAll('.usage-trend-tab').forEach(function (el) {
+        var isActive = String(el.getAttribute('data-days') || '') === activeDays;
+        el.classList.toggle('is-active', isActive);
+        el.setAttribute('aria-selected', isActive ? 'true' : 'false');
+      });
+    }
+
+    function updateCaption(points) {
+      var el = document.getElementById(chartId + '_caption');
+      if (!el) return;
+      var total = 0;
+      (points || []).forEach(function (p) {
+        total += Number(p.tokens_used != null ? p.tokens_used : (p.value || 0)) || 0;
+      });
+      var dayLabel = 'last ' + activeDays + ' days';
+      if (total <= 0) {
+        el.textContent = 'No usage for ' + dayLabel + '.';
+        return;
+      }
+      el.textContent = total.toLocaleString(undefined, { maximumFractionDigits: 2 }) + ' tokens used (' + dayLabel + ')';
+    }
 
     function drawCreditUsageChart() {
       var el = document.getElementById(chartId);
       if (!el || !window.google || !google.visualization) return;
+      var points = resolvePoints();
+      chartRows = pointsToChartRows(points);
+      updateCaption(points);
 
       var highestValue = Number.NEGATIVE_INFINITY;
       var highestIndex = -1;
@@ -64,11 +188,11 @@ $chartId = 'token_usage_curve_chart';
         }
       }
 
-      var leadStartIndex = highestIndex > 0 ? (highestIndex - 1) : -1;
-      var tableRows = [['Period', 'Tokens', { role: 'style' }, 'Anomaly', { role: 'style' }]];
+      var tableRows = [];
       var anomalyRows = [];
       for (var i = 0; i < chartRows.length; i++) {
         var val = Number(chartRows[i][1]);
+        if (!isFinite(val)) val = 0;
         var isAnomaly = i === highestIndex;
         if (isAnomaly) anomalyRows.push(i);
         tableRows.push([
@@ -80,7 +204,14 @@ $chartId = 'token_usage_curve_chart';
         ]);
       }
 
-      var data = google.visualization.arrayToDataTable(tableRows);
+      var data = new google.visualization.DataTable();
+      data.addColumn('string', 'Period');
+      data.addColumn('number', 'Tokens');
+      data.addColumn({ type: 'string', role: 'style' });
+      data.addColumn('number', 'Anomaly');
+      data.addColumn({ type: 'string', role: 'style' });
+      data.addRows(tableRows);
+
       var options = {
         chartArea: { left: 48, top: 14, width: '86%', height: '72%' },
         curveType: 'function',
@@ -110,94 +241,6 @@ $chartId = 'token_usage_curve_chart';
       google.visualization.events.addListener(chart, 'ready', function () {
         var existingLayer = document.getElementById(chartId + '_anomaly_pulse');
         if (existingLayer) existingLayer.remove();
-        var svg = el.querySelector('svg');
-        var oldShadow = el.querySelector('#credit_usage_line_shadow');
-        if (oldShadow) oldShadow.remove();
-        var oldGrad = el.querySelector('#credit_usage_line_gradient');
-        if (oldGrad) oldGrad.remove();
-        var oldShadowGrad = el.querySelector('#credit_usage_shadow_gradient');
-        if (oldShadowGrad) oldShadowGrad.remove();
-
-        // Build a connected shadow shape from the line down to chart bottom.
-        var linePath = el.querySelector('svg path[stroke="#ec0868"], svg path[stroke="#EC0868"]');
-        if (svg && linePath) {
-          var d = linePath.getAttribute('d') || '';
-          var nums = d.match(/-?\d+(?:\.\d+)?/g) || [];
-          if (nums.length >= 4) {
-            var points = [];
-            for (var n = 0; n < nums.length - 1; n += 2) {
-              points.push({ x: Number(nums[n]), y: Number(nums[n + 1]) });
-            }
-            if (points.length >= 2) {
-              var first = points[0];
-              var last = points[points.length - 1];
-              var area = chart.getChartLayoutInterface().getChartAreaBoundingBox();
-              var bottomY = area.top + area.height;
-              var shadowPath = d + ' L ' + last.x + ' ' + bottomY + ' L ' + first.x + ' ' + bottomY + ' Z';
-              var shadow = document.createElementNS('http://www.w3.org/2000/svg', 'path');
-              shadow.setAttribute('id', 'credit_usage_line_shadow');
-              shadow.setAttribute('d', shadowPath);
-              shadow.setAttribute('fill', 'rgba(236, 8, 104, 0.18)');
-              shadow.setAttribute('stroke', 'none');
-              linePath.parentNode.insertBefore(shadow, linePath);
-
-              if (highestIndex > 0) {
-                var layout = chart.getChartLayoutInterface();
-                var leadStartX = layout.getXLocation(highestIndex - 1);
-                var leadStartY = layout.getYLocation(data.getValue(highestIndex - 1, 1));
-                var leadEndX = layout.getXLocation(highestIndex);
-                var leadEndY = layout.getYLocation(data.getValue(highestIndex, 1));
-                if (isFinite(leadStartX) && isFinite(leadStartY) && isFinite(leadEndX) && isFinite(leadEndY)) {
-                  var leftX = area.left;
-                  var width = Math.max(1, area.width);
-                  var pStart = Math.max(0, Math.min(1, (leadStartX - leftX) / width));
-                  var pEnd = Math.max(0, Math.min(1, (leadEndX - leftX) / width));
-                  var eps = 0.001;
-
-                  var defs = svg.querySelector('defs');
-                  if (!defs) {
-                    defs = document.createElementNS('http://www.w3.org/2000/svg', 'defs');
-                    svg.insertBefore(defs, svg.firstChild);
-                  }
-
-                  var lineGrad = document.createElementNS('http://www.w3.org/2000/svg', 'linearGradient');
-                  lineGrad.setAttribute('id', 'credit_usage_line_gradient');
-                  lineGrad.setAttribute('x1', leftX);
-                  lineGrad.setAttribute('y1', 0);
-                  lineGrad.setAttribute('x2', leftX + width);
-                  lineGrad.setAttribute('y2', 0);
-                  lineGrad.setAttribute('gradientUnits', 'userSpaceOnUse');
-                  lineGrad.innerHTML =
-                    '<stop offset="0%" stop-color="#ec0868"/>' +
-                    '<stop offset="' + (pStart * 100) + '%" stop-color="#ec0868"/>' +
-                    '<stop offset="' + (pStart * 100) + '%" stop-color="#ec0868"/>' +
-                    '<stop offset="' + (pEnd * 100) + '%" stop-color="#ec0868"/>' +
-                    '<stop offset="' + (Math.min(100, (pEnd + eps) * 100)) + '%" stop-color="#ec0868"/>' +
-                    '<stop offset="100%" stop-color="#ec0868"/>';
-                  defs.appendChild(lineGrad);
-                  linePath.setAttribute('stroke', 'url(#credit_usage_line_gradient)');
-
-                  var shadowGrad = document.createElementNS('http://www.w3.org/2000/svg', 'linearGradient');
-                  shadowGrad.setAttribute('id', 'credit_usage_shadow_gradient');
-                  shadowGrad.setAttribute('x1', leftX);
-                  shadowGrad.setAttribute('y1', 0);
-                  shadowGrad.setAttribute('x2', leftX + width);
-                  shadowGrad.setAttribute('y2', 0);
-                  shadowGrad.setAttribute('gradientUnits', 'userSpaceOnUse');
-                  shadowGrad.innerHTML =
-                    '<stop offset="0%" stop-color="rgba(236, 8, 104, 0.18)"/>' +
-                    '<stop offset="' + (pStart * 100) + '%" stop-color="rgba(236, 8, 104, 0.18)"/>' +
-                    '<stop offset="' + (pStart * 100) + '%" stop-color="rgba(236, 8, 104, 0.18)"/>' +
-                    '<stop offset="' + (pEnd * 100) + '%" stop-color="rgba(236, 8, 104, 0.18)"/>' +
-                    '<stop offset="' + (Math.min(100, (pEnd + eps) * 100)) + '%" stop-color="rgba(236, 8, 104, 0.18)"/>' +
-                    '<stop offset="100%" stop-color="rgba(236, 8, 104, 0.18)"/>';
-                  defs.appendChild(shadowGrad);
-                  shadow.setAttribute('fill', 'url(#credit_usage_shadow_gradient)');
-                }
-              }
-            }
-          }
-        }
 
         if (!anomalyRows.length) return;
 
@@ -208,32 +251,44 @@ $chartId = 'token_usage_curve_chart';
         el.style.position = 'relative';
         el.appendChild(pulseLayer);
 
-        for (var rowIndex = 0; rowIndex < anomalyRows.length; rowIndex++) {
-          var dataRowIndex = anomalyRows[rowIndex];
+        anomalyRows.forEach(function (dataRowIndex) {
           var x = layout.getXLocation(dataRowIndex);
           var y = layout.getYLocation(data.getValue(dataRowIndex, 1));
-          if (!isFinite(x) || !isFinite(y)) continue;
-
+          if (!isFinite(x) || !isFinite(y)) return;
           var dot = document.createElement('span');
           dot.className = 'anomaly-pulse-dot';
           dot.style.left = x + 'px';
           dot.style.top = y + 'px';
           pulseLayer.appendChild(dot);
-        }
+        });
       });
       chart.draw(data, options);
     }
 
-    if (window.google && google.visualization) {
+    function bindRangeTabs() {
+      document.querySelectorAll('.usage-trend-tab').forEach(function (btn) {
+        btn.addEventListener('click', function () {
+          activeDays = String(btn.getAttribute('data-days') || '7');
+          syncActiveTab();
+          drawCreditUsageChart();
+        });
+      });
+    }
+
+    function init() {
+      activeDays = '7';
+      syncActiveTab();
+      bindRangeTabs();
       drawCreditUsageChart();
       window.addEventListener('resize', drawCreditUsageChart);
+    }
+
+    if (window.google && google.visualization) {
+      init();
       return;
     }
 
     google.charts.load('current', { packages: ['corechart'] });
-    google.charts.setOnLoadCallback(function () {
-      drawCreditUsageChart();
-      window.addEventListener('resize', drawCreditUsageChart);
-    });
+    google.charts.setOnLoadCallback(init);
   })();
 </script>

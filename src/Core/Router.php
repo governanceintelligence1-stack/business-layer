@@ -56,11 +56,37 @@ class Router
     private function callHandler(callable|array $handler, array $params): void
     {
         if (is_callable($handler)) {
-            call_user_func_array($handler, $params);
+            call_user_func_array($handler, array_values($params));
             return;
         }
         [$class, $method] = $handler;
         $instance = new $class();
-        call_user_func_array([$instance, $method], $params);
+        $ordered = $this->orderHandlerArguments($instance, $method, $params);
+        call_user_func_array([$instance, $method], $ordered);
+    }
+
+    /**
+     * @param array<string, string> $params
+     * @return list<string>
+     */
+    private function orderHandlerArguments(object $instance, string $method, array $params): array
+    {
+        $reflection = new \ReflectionMethod($instance, $method);
+        $ordered = [];
+        foreach ($reflection->getParameters() as $parameter) {
+            $name = $parameter->getName();
+            if (array_key_exists($name, $params)) {
+                $ordered[] = $params[$name];
+                continue;
+            }
+            $snake = strtolower((string) preg_replace('/([A-Z])/', '_$1', $name));
+            if (array_key_exists($snake, $params)) {
+                $ordered[] = $params[$snake];
+                continue;
+            }
+            $ordered[] = $parameter->isDefaultValueAvailable() ? $parameter->getDefaultValue() : '';
+        }
+
+        return $ordered;
     }
 }
